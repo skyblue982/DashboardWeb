@@ -145,11 +145,11 @@ select {
 
 .hero {
   border-radius: var(--radius-xl);
-  padding: 18px 20px;
+  padding: 18px 20px 16px;
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  align-items: end;
+  align-items: center;
 }
 
 .hero h2 {
@@ -167,9 +167,46 @@ select {
 }
 
 .filter-panel {
-  min-width: 220px;
+  min-width: 360px;
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  gap: 10px 12px;
+  align-self: flex-start;
+}
+
+.view-mode-toggle {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(47, 36, 26, 0.06);
+  width: fit-content;
+}
+
+.mode-toggle-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.mode-toggle-button.active {
+  background: var(--accent-soft);
+  color: #124b42;
+}
+
+.filter-disabled {
+  opacity: 0.45;
+  filter: blur(0.4px);
+}
+
+.filter-disabled select {
+  pointer-events: none;
 }
 
 .filter-panel label,
@@ -427,6 +464,16 @@ th {
   font-weight: 700;
 }
 
+.total-row td {
+  font-weight: 700;
+  background: linear-gradient(180deg, rgba(31, 122, 107, 0.10), rgba(196, 138, 45, 0.10));
+  border-top: 2px solid rgba(31, 122, 107, 0.18);
+}
+
+.total-row td:first-child {
+  color: #124b42;
+}
+
 .form-grid {
   align-items: start;
 }
@@ -577,6 +624,18 @@ th {
   background: rgba(255, 252, 247, 0.92);
 }
 
+.management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+}
+
+.management-actions select {
+  min-width: 180px;
+}
+
 .danger-button {
   border: 0;
   border-radius: 12px;
@@ -664,6 +723,10 @@ th {
     align-items: start;
   }
 
+  .filter-panel {
+    min-width: 100%;
+  }
+
   .rent-toolbar,
   .toolbar-actions {
     flex-direction: column;
@@ -703,5 +766,9 @@ th {
   .entry-tabs {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-panel {
+    grid-template-columns: 1fr;
   }
 }

@@ -23,6 +23,9 @@ const MONTH_NAMES = [
 const state = {
   owner: ALL_OWNERS,
   year: ALL_YEARS,
+  viewMode: "average",
+  monthFrom: "01",
+  monthTo: "12",
   owners: [],
   rooms: [],
   transactions: [],
@@ -37,6 +40,9 @@ const state = {
 
 const ownerFilter = document.querySelector("#ownerFilter");
 const yearFilter = document.querySelector("#yearFilter");
+const viewModeToggle = document.querySelector("#viewModeToggle");
+const monthFromFilter = document.querySelector("#monthFromFilter");
+const monthToFilter = document.querySelector("#monthToFilter");
 const metricGrid = document.querySelector("#metricGrid");
 const portfolioSummary = document.querySelector("#portfolioSummary");
 const ownerSplit = document.querySelector("#ownerSplit");
@@ -238,6 +244,54 @@ function getLatestSavedRentMonth() {
   return rentTransactions.map((tx) => monthKeyFromDate(tx.tx_date)).sort().at(-1);
 }
 
+function getLatestSavedRentMonthForYear(year) {
+  if (!year || year === ALL_YEARS) return "";
+  const rentTransactions = getRentTransactions()
+    .filter((tx) => String(new Date(tx.tx_date).getFullYear()) === year);
+  if (!rentTransactions.length) return "";
+  return rentTransactions.map((tx) => monthKeyFromDate(tx.tx_date)).sort().at(-1);
+}
+
+function getDefaultMonthRangeForYear(year) {
+  if (!year || year === ALL_YEARS) {
+    return { monthFrom: "01", monthTo: "12" };
+  }
+
+  const currentYear = String(new Date().getFullYear());
+  const latestRentMonth = getLatestSavedRentMonthForYear(year);
+  const latestMonthValue = latestRentMonth ? latestRentMonth.slice(5, 7) : "12";
+  const isCurrentYear = year === currentYear;
+
+  return {
+    monthFrom: "01",
+    monthTo: isCurrentYear ? latestMonthValue : "12"
+  };
+}
+
+function normalizeMonthRange() {
+  const defaultRange = getDefaultMonthRangeForYear(state.year);
+  const monthValues = MONTH_NAMES.map((month) => month.value);
+
+  if (!monthValues.includes(state.monthFrom)) state.monthFrom = defaultRange.monthFrom;
+  if (!monthValues.includes(state.monthTo)) state.monthTo = defaultRange.monthTo;
+
+  if (state.monthFrom > state.monthTo) {
+    state.monthTo = state.monthFrom;
+  }
+}
+
+function resetMonthRangeForYear(year) {
+  const defaultRange = getDefaultMonthRangeForYear(year);
+  state.monthFrom = defaultRange.monthFrom;
+  state.monthTo = defaultRange.monthTo;
+  normalizeMonthRange();
+}
+
+function getSelectedMonthCount() {
+  if (state.year === ALL_YEARS || state.viewMode === "fullYear") return 12;
+  return (Number(state.monthTo) - Number(state.monthFrom)) + 1;
+}
+
 function getRoomByIdMap() {
   return new Map(
     state.rooms.map((room) => [
@@ -263,7 +317,12 @@ function getFilteredTransactions() {
   return getEnrichedTransactions().filter((tx) => {
     const ownerMatches = state.owner === ALL_OWNERS || tx.ownerName === state.owner;
     const yearMatches = state.year === ALL_YEARS || String(new Date(tx.tx_date).getFullYear()) === state.year;
-    return ownerMatches && yearMatches;
+    const monthKey = monthKeyFromDate(tx.tx_date);
+    const monthValue = monthKey.slice(5, 7);
+    const monthMatches = state.year === ALL_YEARS
+      || state.viewMode === "fullYear"
+      || (monthValue >= state.monthFrom && monthValue <= state.monthTo);
+    return ownerMatches && yearMatches && monthMatches;
   });
 }
 
@@ -272,6 +331,26 @@ function getCapitalTransactions() {
     const ownerMatches = state.owner === ALL_OWNERS || tx.ownerName === state.owner;
     return ownerMatches && tx.flow_type === "capital";
   });
+}
+
+function getMonthCountForTransactions() {
+  return getSelectedMonthCount();
+}
+
+function calculateAverageCapitalRoi(profit, capital, monthCount) {
+  if (capital <= 0 || monthCount <= 0) {
+    return { averageCapital: 0, roi: 0, monthCount: monthCount || 0 };
+  }
+
+  const averageCapital = state.viewMode === "fullYear"
+    ? capital
+    : (capital / 12) * monthCount;
+  const roi = averageCapital > 0 ? Number(((profit / averageCapital) * 100).toFixed(2)) : 0;
+  return {
+    averageCapital: Number(averageCapital.toFixed(2)),
+    roi,
+    monthCount
+  };
 }
 
 function getRoomMetrics() {
@@ -285,7 +364,9 @@ function getRoomMetrics() {
       rent: 0,
       expense: 0,
       profit: 0,
-      roi: 0
+      roi: 0,
+      averageCapital: 0,
+      monthCount: state.year === ALL_YEARS ? 12 : 0
     }));
 
   const roomMap = new Map(rooms.map((room) => [room.roomId, room]));
@@ -305,7 +386,12 @@ function getRoomMetrics() {
 
   rooms.forEach((room) => {
     room.profit = room.rent - room.expense;
-    room.roi = room.capital > 0 ? Number(((room.profit / room.capital) * 100).toFixed(2)) : 0;
+    const roomTransactions = getFilteredTransactions().filter((tx) => tx.room_id === room.roomId);
+    const monthCount = getMonthCountForTransactions(roomTransactions);
+    const roiMetrics = calculateAverageCapitalRoi(room.profit, room.capital, monthCount);
+    room.monthCount = roiMetrics.monthCount;
+    room.averageCapital = roiMetrics.averageCapital;
+    room.roi = roiMetrics.roi;
   });
 
   return rooms;
@@ -322,8 +408,20 @@ function getOwnerMetrics() {
     const rent = ownerRooms.reduce((sum, room) => sum + room.rent, 0);
     const expense = ownerRooms.reduce((sum, room) => sum + room.expense, 0);
     const profit = rent - expense;
-    const roi = capital > 0 ? Number(((profit / capital) * 100).toFixed(2)) : 0;
-    return { name: owner.name, rooms: ownerRooms.length, capital, rent, expense, profit, roi };
+    const ownerTransactions = getFilteredTransactions().filter((tx) => tx.ownerName === owner.name);
+    const monthCount = getMonthCountForTransactions(ownerTransactions);
+    const roiMetrics = calculateAverageCapitalRoi(profit, capital, monthCount);
+    return {
+      name: owner.name,
+      rooms: ownerRooms.length,
+      capital,
+      rent,
+      expense,
+      profit,
+      roi: roiMetrics.roi,
+      averageCapital: roiMetrics.averageCapital,
+      monthCount: roiMetrics.monthCount
+    };
   });
 }
 
@@ -333,8 +431,18 @@ function getSummary() {
   const rent = rooms.reduce((sum, room) => sum + room.rent, 0);
   const expense = rooms.reduce((sum, room) => sum + room.expense, 0);
   const profit = rent - expense;
-  const roi = capital > 0 ? Number(((profit / capital) * 100).toFixed(2)) : 0;
-  return { rooms: rooms.length, capital, rent, expense, profit, roi };
+  const monthCount = getMonthCountForTransactions(getFilteredTransactions());
+  const roiMetrics = calculateAverageCapitalRoi(profit, capital, monthCount);
+  return {
+    rooms: rooms.length,
+    capital,
+    rent,
+    expense,
+    profit,
+    roi: roiMetrics.roi,
+    averageCapital: roiMetrics.averageCapital,
+    monthCount: roiMetrics.monthCount
+  };
 }
 
 function ensureRentDraftSelection() {
@@ -353,6 +461,7 @@ function buildFilters() {
   const selectedExpenseRoom = expenseRoom.value;
   const selectedCapitalRoom = capitalRoom.value;
   const selectedOwnerId = roomOwnerSelect.value;
+  normalizeMonthRange();
   const ownerOptions = [ALL_OWNERS, ...state.owners.map((owner) => owner.name)];
   ownerFilter.innerHTML = ownerOptions
     .map((owner) => `<option value="${owner}" ${owner === state.owner ? "selected" : ""}>${owner}</option>`)
@@ -361,6 +470,21 @@ function buildFilters() {
   yearFilter.innerHTML = getYearOptions()
     .map((year) => `<option value="${year}" ${year === state.year ? "selected" : ""}>${year}</option>`)
     .join("");
+
+  monthFromFilter.innerHTML = MONTH_NAMES
+    .map((month) => `<option value="${month.value}" ${month.value === state.monthFrom ? "selected" : ""}>${month.label}</option>`)
+    .join("");
+  monthToFilter.innerHTML = MONTH_NAMES
+    .map((month) => `<option value="${month.value}" ${month.value === state.monthTo ? "selected" : ""}>${month.label}</option>`)
+    .join("");
+  const monthFiltersDisabled = state.year === ALL_YEARS || state.viewMode === "fullYear";
+  monthFromFilter.disabled = monthFiltersDisabled;
+  monthToFilter.disabled = monthFiltersDisabled;
+  monthFromFilter.closest("label")?.classList.toggle("filter-disabled", monthFiltersDisabled);
+  monthToFilter.closest("label")?.classList.toggle("filter-disabled", monthFiltersDisabled);
+  document.querySelectorAll(".mode-toggle-button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.viewMode === state.viewMode);
+  });
 
   expenseRoom.innerHTML = state.rooms
     .map((room) => `<option value="${room.room_code}" ${room.room_code === selectedExpenseRoom ? "selected" : ""}>${room.room_code}</option>`)
@@ -588,9 +712,14 @@ function renderMetrics() {
   const metrics = [
     { label: "กำไรสุทธิ", value: formatCurrency(summary.profit), foot: `ROI ${summary.roi}%` },
     { label: "ค่าเช่ารวม", value: formatCurrency(summary.rent), foot: `${summary.rooms} ห้องที่มีข้อมูล` },
-    { label: "ค่าใช้จ่ายรวม", value: formatCurrency(summary.expense), foot: "รวมค่าบำรุงรักษาและนายหน้า" },
+    { label: "ค่าใช้จ่ายรวม", value: formatCurrency(summary.expense), foot: "ค่าใช้จ่ายรวมทุกรายการ" },
     { label: "มูลค่าลงทุน", value: formatCurrency(summary.capital), foot: `คิดเป็น ${formatCompact(summary.capital)}` }
   ];
+  if (state.year !== ALL_YEARS && state.viewMode !== "fullYear") {
+    metrics[0].foot = `ROI ${summary.roi}% จากทุนเฉลี่ย ${summary.monthCount} เดือน`;
+    metrics[3].foot = `ทุนเฉลี่ย ${summary.monthCount} เดือน = ${formatCurrency(summary.averageCapital)}`;
+  }
+
   metricGrid.innerHTML = metrics.map((metric) => `
     <article class="metric-card">
       <p class="eyebrow">${metric.label}</p>
@@ -749,6 +878,23 @@ function bindFilters() {
   });
   yearFilter.addEventListener("change", (event) => {
     state.year = event.target.value;
+    resetMonthRangeForYear(state.year);
+    renderAll();
+  });
+  monthFromFilter.addEventListener("change", (event) => {
+    state.monthFrom = event.target.value;
+    normalizeMonthRange();
+    renderAll();
+  });
+  monthToFilter.addEventListener("change", (event) => {
+    state.monthTo = event.target.value;
+    normalizeMonthRange();
+    renderAll();
+  });
+  viewModeToggle?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement) || !target.dataset.viewMode) return;
+    state.viewMode = target.dataset.viewMode;
     renderAll();
   });
 }
@@ -1178,12 +1324,232 @@ async function loadDashboardData() {
     state.year = ALL_YEARS;
   }
 
+  resetMonthRangeForYear(state.year);
+
   ensureRentDraftSelection();
   buildRentDraft(getSelectedRentMonthValue());
   renderAll();
 }
 
+function renderPortfolioSummary() {
+  const rooms = [...getRoomMetrics()].sort((a, b) => b.profit - a.profit);
+  const summary = getSummary();
+
+  portfolioSummary.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ห้อง</th>
+            <th>เจ้าของ</th>
+            <th>เงินลงทุน</th>
+            <th>ค่าเช่า</th>
+            <th>ค่าใช้จ่าย</th>
+            <th>กำไรสุทธิ</th>
+            <th>ROI</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rooms.map((room) => `
+            <tr>
+              <td>${room.roomCode}</td>
+              <td>${room.owner}</td>
+              <td>${formatCurrency(room.capital)}</td>
+              <td>${formatCurrency(room.rent)}</td>
+              <td>${formatCurrency(room.expense)}</td>
+              <td>${formatCurrency(room.profit)}</td>
+              <td>${room.roi}%</td>
+            </tr>
+          `).join("")}
+          <tr class="total-row">
+            <td>Total</td>
+            <td>${summary.rooms} ห้อง</td>
+            <td>${formatCurrency(summary.capital)}</td>
+            <td>${formatCurrency(summary.rent)}</td>
+            <td>${formatCurrency(summary.expense)}</td>
+            <td>${formatCurrency(summary.profit)}</td>
+            <td>${summary.roi}%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderMetrics() {
+  const summary = getSummary();
+  const metrics = [
+    { label: "กำไรสุทธิ", value: formatCurrency(summary.profit), foot: `ROI ${summary.roi}%` },
+    { label: "ค่าเช่ารวม", value: formatCurrency(summary.rent), foot: `${summary.rooms} ห้องที่มีข้อมูล` },
+    { label: "ค่าใช้จ่ายรวม", value: formatCurrency(summary.expense), foot: "ค่าใช้จ่ายรวมทุกรายการ" },
+    { label: "มูลค่าลงทุน", value: formatCurrency(summary.capital), foot: `คิดเป็น ${formatCompact(summary.capital)}` }
+  ];
+
+  if (state.year !== ALL_YEARS && state.viewMode === "average") {
+    metrics[0].foot = `ROI ${summary.roi}% จากทุนเฉลี่ย ${summary.monthCount} เดือน`;
+    metrics[3].foot = `ทุนเฉลี่ย ${summary.monthCount} เดือน = ${formatCurrency(summary.averageCapital)}`;
+  }
+
+  if (state.year !== ALL_YEARS && state.viewMode === "fullYear") {
+    metrics[0].foot = `ROI ${summary.roi}% แบบ Full Year`;
+    metrics[3].foot = `ทุนเต็มปี = ${formatCurrency(summary.capital)}`;
+  }
+
+  metricGrid.innerHTML = metrics.map((metric) => `
+    <article class="metric-card">
+      <p class="eyebrow">${metric.label}</p>
+      <h3>${metric.value}</h3>
+      <p class="metric-foot">${metric.foot}</p>
+    </article>
+  `).join("");
+}
+
+function renderTable() {
+  if (!roomTableBody) return;
+
+  const rooms = [...getRoomMetrics()].sort((a, b) => b.profit - a.profit);
+  const summary = getSummary();
+
+  roomTableBody.innerHTML = `
+    ${rooms.map((room) => `
+      <tr>
+        <td>${room.roomCode}</td>
+        <td>${room.owner}</td>
+        <td>${formatCurrency(room.capital)}</td>
+        <td>${formatCurrency(room.rent)}</td>
+        <td>${formatCurrency(room.expense)}</td>
+        <td>${formatCurrency(room.profit)}</td>
+        <td>${room.roi}%</td>
+      </tr>
+    `).join("")}
+    <tr class="total-row">
+      <td>Total</td>
+      <td>${summary.rooms} ห้อง</td>
+      <td>${formatCurrency(summary.capital)}</td>
+      <td>${formatCurrency(summary.rent)}</td>
+      <td>${formatCurrency(summary.expense)}</td>
+      <td>${formatCurrency(summary.profit)}</td>
+      <td>${summary.roi}%</td>
+    </tr>
+  `;
+}
+
+function applyOverviewLabels() {
+  const overviewPanels = document.querySelectorAll("#overview .panel-grid:first-of-type .panel h3");
+  if (overviewPanels[0]) {
+    overviewPanels[0].textContent = "ตารางสรุปรายห้อง";
+  }
+  if (overviewPanels[1]) {
+    overviewPanels[1].textContent = "สรุปตามเจ้าของห้อง";
+  }
+}
+
+function removeRoomsSection() {
+  document.querySelector('.nav-link[data-section="rooms"]')?.remove();
+  document.querySelector("#rooms")?.remove();
+}
+
+function renderManagementLists() {
+  const capitalRows = getEnrichedTransactions()
+    .filter((tx) => tx.flow_type === "capital")
+    .sort((a, b) => new Date(b.tx_date) - new Date(a.tx_date))
+    .slice(0, 20);
+
+  const selectedExpenseRoom = expenseRoom?.value || "";
+  const expenseRows = getFilteredTransactions()
+    .filter((tx) => tx.flow_type === "expense")
+    .filter((tx) => !selectedExpenseRoom || tx.roomCode === selectedExpenseRoom)
+    .sort((a, b) => new Date(b.tx_date) - new Date(a.tx_date))
+    .slice(0, 20);
+
+  capitalDeleteList.innerHTML = capitalRows.map((tx) => `
+    <article class="management-item">
+      <div>
+        <strong>${tx.roomCode} โ€ข ${formatCurrency(tx.amount)}</strong>
+        <p class="subtext">${tx.item_name || "ทุน"} โ€ข ${tx.tx_date}${tx.details ? ` โ€ข ${tx.details}` : ""}</p>
+      </div>
+      <button type="button" class="danger-button" data-capital-id="${tx.id}" data-capital-room="${tx.roomCode}">ลบทุน</button>
+    </article>
+  `).join("") || `<article class="management-item"><div><strong>ยังไม่มีรายการทุน</strong><p class="subtext">เมื่อมีการบันทึกทุน รายการจะขึ้นที่นี่</p></div></article>`;
+
+  expenseDeleteList.innerHTML = expenseRows.map((tx) => `
+    <article class="management-item">
+      <div>
+        <strong>${tx.roomCode} โ€ข ${formatCurrency(tx.amount)}</strong>
+        <p class="subtext">${tx.tx_date}${tx.details ? ` โ€ข ${tx.details}` : ""}</p>
+      </div>
+      <button type="button" class="danger-button" data-expense-id="${tx.id}" data-expense-room="${tx.roomCode}">ลบค่าใช้จ่าย</button>
+    </article>
+  `).join("") || `<article class="management-item"><div><strong>ยังไม่มีค่าใช้จ่าย</strong><p class="subtext">รายการนี้จะอิงตามห้องที่เลือกและปีข้อมูลด้านบน</p></div></article>`;
+
+  roomDeleteList.innerHTML = state.rooms
+    .slice()
+    .sort((a, b) => a.room_code.localeCompare(b.room_code))
+    .map((room) => `
+      <article class="management-item">
+        <div>
+          <strong>${room.room_code}</strong>
+          <p class="subtext">เจ้าของปัจจุบัน: ${room.owner_name}</p>
+        </div>
+        <div class="management-actions">
+          <select data-room-owner-select="${room.id}">
+            ${state.owners
+              .slice()
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((owner) => `<option value="${owner.id}" ${owner.id === room.owner_id ? "selected" : ""}>${owner.name}</option>`)
+              .join("")}
+          </select>
+          <button type="button" class="secondary-button" data-room-owner-update="${room.id}" data-room-code="${room.room_code}">เปลี่ยนเจ้าของ</button>
+          <button type="button" class="danger-button" data-room-id="${room.id}" data-room-code="${room.room_code}">ลบห้อง</button>
+        </div>
+      </article>
+    `).join("");
+
+  ownerDeleteList.innerHTML = state.owners
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((owner) => {
+      const roomCount = state.rooms.filter((room) => room.owner_id === owner.id).length;
+      return `
+        <article class="management-item">
+          <div>
+            <strong>${owner.name}</strong>
+            <p class="subtext">${roomCount} ห้องในระบบ</p>
+          </div>
+          <button type="button" class="danger-button" data-owner-id="${owner.id}" data-owner-name="${owner.name}">ลบเจ้าของห้อง</button>
+        </article>
+      `;
+    }).join("");
+}
+
+function bindRoomOwnerUpdates() {
+  roomDeleteList.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement) || !target.dataset.roomOwnerUpdate) return;
+
+    const roomId = target.dataset.roomOwnerUpdate;
+    const roomCode = target.dataset.roomCode || "";
+    const ownerSelect = roomDeleteList.querySelector(`[data-room-owner-select="${roomId}"]`);
+    if (!(ownerSelect instanceof HTMLSelectElement)) return;
+
+    const ownerId = ownerSelect.value;
+    const ownerName = ownerSelect.options[ownerSelect.selectedIndex]?.textContent || "-";
+    const confirmed = window.confirm(`เปลี่ยนเจ้าของห้อง ${roomCode} เป็น ${ownerName} ใช่หรือไม่?`);
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabaseClient.from("rooms").update({ owner_id: ownerId }).eq("id", roomId);
+      if (error) throw error;
+      alert(`เปลี่ยนเจ้าของห้อง ${roomCode} เป็น ${ownerName} เรียบร้อย`);
+      await loadDashboardData();
+    } catch (error) {
+      alert(`เปลี่ยนเจ้าของห้องไม่สำเร็จ: ${error.message}`);
+    }
+  });
+}
+
 async function init() {
+  removeRoomsSection();
   reorderOverviewPanels();
   applyOverviewLabels();
   bindNavigation();
@@ -1197,6 +1563,7 @@ async function init() {
   bindRoomForm();
   bindOwnerForm();
   bindManagementDeletes();
+  bindRoomOwnerUpdates();
   bindExpenseForm();
 
   try {

@@ -47,6 +47,10 @@
         </div>
 
         <div class="filter-panel">
+          <div class="view-mode-toggle" id="viewModeToggle">
+            <button type="button" class="mode-toggle-button active" data-view-mode="average">ทุนเฉลี่ย</button>
+            <button type="button" class="mode-toggle-button" data-view-mode="fullYear">Full Year</button>
+          </div>
           <label>
             เจ้าของห้อง
             <select id="ownerFilter"></select>
@@ -54,6 +58,14 @@
           <label>
             ปีข้อมูล
             <select id="yearFilter"></select>
+          </label>
+          <label>
+            เดือนเริ่มต้น
+            <select id="monthFromFilter"></select>
+          </label>
+          <label>
+            เดือนสิ้นสุด
+            <select id="monthToFilter"></select>
           </label>
         </div>
       </header>
