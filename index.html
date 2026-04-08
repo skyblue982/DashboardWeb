@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDSRCA Property Dashboard</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <aside class="sidebar">
+      <div class="brand-block">
+        <div class="brand-mark">P</div>
+        <div>
+          <p class="eyebrow">Property Intelligence</p>
+          <h1>RCA Investment Dashboard</h1>
+        </div>
+      </div>
+
+      <nav class="side-nav">
+        <button class="nav-link active" data-section="overview">ภาพรวมพอร์ต</button>
+        <button class="nav-link" data-section="rooms">ผลตอบแทนรายห้อง</button>
+        <button class="nav-link" data-section="transactions">บันทึกรายการ</button>
+        <button class="nav-link" data-section="plan">Roadmap ระบบ</button>
+      </nav>
+
+      <section class="sidebar-card">
+        <p class="sidebar-label">แนวคิดระบบ</p>
+        <ul class="sidebar-list">
+          <li>ดูผลตอบแทนทั้งพอร์ตและรายห้อง</li>
+          <li>กรองตามเจ้าของห้องและปี</li>
+          <li>บันทึกค่าเช่าแบบรายเดือนทีเดียวทุกห้อง</li>
+          <li>เชื่อม Supabase เพื่อใช้งานจริงได้</li>
+        </ul>
+      </section>
+    </aside>
+
+    <main class="content">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Interactive investment dashboard</p>
+          <h2>สรุปการลงทุนห้องเช่า RCA</h2>
+          <p class="hero-copy">
+            ดูกำไร-ขาดทุนของทั้งพอร์ตในหน้าเดียว และบันทึกค่าเช่ารายเดือนแบบง่าย
+            โดยระบบจะเติมค่าเช่าล่าสุดให้อัตโนมัติถ้าเดือนนั้นยังไม่เคยบันทึก
+          </p>
+        </div>
+
+        <div class="filter-panel">
+          <label>
+            เจ้าของห้อง
+            <select id="ownerFilter"></select>
+          </label>
+          <label>
+            ปีข้อมูล
+            <select id="yearFilter"></select>
+          </label>
+        </div>
+      </header>
+
+      <section class="section active" id="overview">
+        <div class="metric-grid" id="metricGrid"></div>
+
+        <div class="panel-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Portfolio snapshot</p>
+                <h3>ผลตอบแทนรายห้อง</h3>
+              </div>
+            </div>
+            <div id="portfolioSummary" class="portfolio-summary-grid"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Owner split</p>
+                <h3>กำไรตามเจ้าของห้อง</h3>
+              </div>
+            </div>
+            <div id="ownerSplit" class="owner-split"></div>
+          </section>
+        </div>
+
+        <div class="panel-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Upcoming tasks</p>
+                <h3>งานที่ต้องทำในเดือนถัดไป</h3>
+              </div>
+            </div>
+            <div id="maintenanceAlerts" class="activity-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Top performance</p>
+                <h3>ห้องที่ทำกำไรสูงสุด</h3>
+              </div>
+            </div>
+            <div id="highlightCards" class="highlight-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Recent activity</p>
+                <h3>รายการล่าสุดในระบบ</h3>
+              </div>
+            </div>
+            <div id="recentActivity" class="activity-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="section" id="rooms">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Room performance table</p>
+              <h3>ตารางสรุปรายห้อง</h3>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ห้อง</th>
+                  <th>เจ้าของ</th>
+                  <th>เงินลงทุน</th>
+                  <th>ค่าเช่า</th>
+                  <th>ค่าใช้จ่าย</th>
+                  <th>กำไรสุทธิ</th>
+                  <th>ROI</th>
+                </tr>
+              </thead>
+              <tbody id="roomTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="section" id="transactions">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Entry workspace</p>
+              <h3>บันทึกรายการและจัดการข้อมูล</h3>
+            </div>
+          </div>
+
+          <div class="entry-tabs" id="entryTabs">
+            <button type="button" class="entry-tab active" data-entry-tab="rent">ค่าเช่า</button>
+            <button type="button" class="entry-tab" data-entry-tab="capital">ทุน</button>
+            <button type="button" class="entry-tab" data-entry-tab="expense">ค่าใช้จ่าย</button>
+            <button type="button" class="entry-tab" data-entry-tab="setup">จัดการข้อมูล</button>
+          </div>
+        </section>
+
+        <div class="entry-tab-panel active" data-entry-panel="rent">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Monthly rent entry</p>
+                <h3>บันทึกค่าเช่ารายเดือนทุกห้อง</h3>
+              </div>
+            </div>
+
+            <div class="rent-toolbar">
+              <label>
+                ปี
+                <select id="rentYearSelect"></select>
+              </label>
+              <label>
+                เดือน
+                <select id="rentMonthSelect"></select>
+              </label>
+              <button type="button" class="secondary-button" id="reloadRentDraft">โหลดข้อมูลเดือนที่เลือก</button>
+            </div>
+
+            <div class="helper-card" id="latestSavedMonthInfo"></div>
+            <div class="helper-card" id="rentDraftInfo">
+              เลือกเดือนแล้วระบบจะดึงข้อมูลของเดือนนั้นขึ้นมา ถ้ายังไม่มีจะเติมค่าเช่าจากเดือนล่าสุดให้อัตโนมัติ
+            </div>
+
+            <div class="table-wrap">
+              <table class="rent-entry-table">
+                <thead>
+                  <tr>
+                    <th>ห้อง</th>
+                    <th>เจ้าของ</th>
+                    <th>สถานะข้อมูล</th>
+                    <th>เคยบันทึกไว้</th>
+                    <th>ค่าเช่า</th>
+                    <th>รายละเอียด</th>
+                  </tr>
+                </thead>
+                <tbody id="rentBatchBody"></tbody>
+              </table>
+            </div>
+
+            <div class="toolbar-actions">
+              <button type="button" id="saveMonthlyRent">บันทึกค่าเช่าทั้งเดือน</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="entry-tab-panel" data-entry-panel="capital">
+          <div class="panel-grid form-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Capital entry</p>
+                  <h3>บันทึกทุน</h3>
+                </div>
+              </div>
+              <form class="entry-form" id="capitalForm">
+                <label>
+                  ห้อง
+                  <select name="roomCode" id="capitalRoom"></select>
+                </label>
+                <label>
+                  ปีที่บันทึกทุน
+                  <select name="txYear" id="capitalYearSelect"></select>
+                </label>
+                <label>
+                  เดือนที่บันทึกทุน
+                  <select name="txMonth" id="capitalMonthSelect"></select>
+                </label>
+                <label>
+                  จำนวนเงิน
+                  <input type="number" name="amount" step="0.01" inputmode="decimal" placeholder="เช่น 1200000">
+                </label>
+                <label>
+                  รายการ
+                  <input type="text" name="itemName" placeholder="เช่น ค่าห้อง / ค่าโอน / ซื้อของเข้าห้อง">
+                </label>
+                <label>
+                  รายละเอียด
+                  <input type="text" name="details" placeholder="รายละเอียดทุนเพิ่มเติม">
+                </label>
+                <button type="submit">เพิ่มรายการทุน</button>
+              </form>
+              <div class="helper-card" id="capitalStatusInfo" hidden></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Capital management</p>
+                  <h3>ลบรายการทุน</h3>
+                </div>
+              </div>
+              <div id="capitalDeleteList" class="management-list"></div>
+            </section>
+          </div>
+        </div>
+
+        <div class="entry-tab-panel" data-entry-panel="expense">
+          <div class="panel-grid form-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Expense entry</p>
+                  <h3>บันทึกค่าใช้จ่าย</h3>
+                </div>
+              </div>
+              <form class="entry-form" id="expenseForm">
+                <label>
+                  ห้อง
+                  <select name="roomCode" id="expenseRoom"></select>
+                </label>
+                <label>
+                  ปีที่จ่าย
+                  <select name="txYear" id="expenseYearSelect"></select>
+                </label>
+                <label>
+                  เดือนที่จ่าย
+                  <select name="txMonth" id="expenseMonthSelect"></select>
+                </label>
+                <label>
+                  จำนวนเงิน
+                  <input type="number" name="amount" step="0.01" inputmode="decimal" placeholder="เช่น 1200">
+                </label>
+                <label>
+                  รายละเอียด
+                  <input type="text" name="details" placeholder="เช่น ซ่อมห้อง / เปลี่ยนแอร์ / ค่าดำเนินการ">
+                </label>
+                <label class="checkbox-row">
+                  <input type="checkbox" name="isRecurring" id="expenseRecurringToggle">
+                  <span>เป็นงานประจำที่ต้องทำซ้ำ</span>
+                </label>
+                <div class="recurring-fields" id="expenseRecurringFields" hidden>
+                  <label>
+                    ทำทุกกี่เดือน
+                    <input type="number" name="intervalMonths" min="1" step="1" placeholder="เช่น 12">
+                  </label>
+                </div>
+                <button type="submit">เพิ่มรายการค่าใช้จ่าย</button>
+              </form>
+              <div class="helper-card" id="expenseStatusInfo" hidden></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Expense management</p>
+                  <h3>ลบค่าใช้จ่าย</h3>
+                </div>
+              </div>
+              <div id="expenseDeleteList" class="management-list"></div>
+            </section>
+
+            <section class="panel panel-span-2">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Recurring tasks</p>
+                  <h3>งานประจำที่ตั้งไว้</h3>
+                </div>
+              </div>
+              <div id="maintenanceRuleList" class="management-list"></div>
+            </section>
+          </div>
+        </div>
+
+        <div class="entry-tab-panel" data-entry-panel="setup">
+          <div class="panel-grid form-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Room setup</p>
+                  <h3>เพิ่มห้องใหม่</h3>
+                </div>
+              </div>
+              <form class="entry-form" id="roomForm">
+                <label>
+                  เลขห้อง
+                  <input type="text" name="roomCode" placeholder="เช่น 45/510">
+                </label>
+                <label>
+                  เจ้าของห้อง
+                  <select name="ownerId" id="roomOwnerSelect"></select>
+                </label>
+                <label>
+                  หมายเหตุ
+                  <input type="text" name="notes" placeholder="เช่น ห้องใหม่ / เตรียมปล่อยเช่า">
+                </label>
+                <button type="submit">เพิ่มห้อง</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Owner setup</p>
+                  <h3>เพิ่มเจ้าของห้อง</h3>
+                </div>
+              </div>
+              <form class="entry-form" id="ownerForm">
+                <label>
+                  ชื่อเจ้าของห้อง
+                  <input type="text" name="ownerName" placeholder="เช่น ปรีดา">
+                </label>
+                <button type="submit">เพิ่มเจ้าของห้อง</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Room management</p>
+                  <h3>ลบห้อง</h3>
+                </div>
+              </div>
+              <div id="roomDeleteList" class="management-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Owner management</p>
+                  <h3>ลบเจ้าของห้อง</h3>
+                </div>
+              </div>
+              <div id="ownerDeleteList" class="management-list"></div>
+            </section>
+
+            <section class="panel panel-span-2">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">Preview</p>
+                  <h3>รายการที่เพิ่งบันทึก</h3>
+                </div>
+              </div>
+              <div id="entryPreview" class="activity-list"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="plan">
+        <div class="panel-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Supabase structure</p>
+                <h3>โมเดลข้อมูลที่แนะนำ</h3>
+              </div>
+            </div>
+            <div class="stack-list">
+              <article>
+                <h4>owners</h4>
+                <p>เก็บชื่อเจ้าของห้อง เช่น ปรีดา, นงลักษณ์, อารียา</p>
+              </article>
+              <article>
+                <h4>rooms</h4>
+                <p>เก็บเลขห้อง สถานะห้อง ต้นทุนรวม และเชื่อมกับเจ้าของ</p>
+              </article>
+              <article>
+                <h4>transactions</h4>
+                <p>เก็บรายการทุน ค่าเช่า และค่าใช้จ่าย พร้อมวันที่ รายละเอียด และหมวดหมู่</p>
+              </article>
+              <article>
+                <h4>room_profit_summary</h4>
+                <p>เป็น view สำหรับคำนวณกำไรสุทธิ ROI และสรุปรายปีไว้ให้ dashboard ใช้งานเร็ว</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">GitHub deployment</p>
+                <h3>แนวทางขึ้นระบบจริง</h3>
+              </div>
+            </div>
+            <ol class="roadmap-list">
+              <li>เก็บ frontend ไว้ใน GitHub repository เดียว</li>
+              <li>ใช้ Supabase เป็นฐานข้อมูลและ auth สำหรับผู้ใช้งาน</li>
+              <li>Deploy หน้าเว็บบน Vercel หรือ Netlify</li>
+              <li>เชื่อม API ผ่าน Supabase JS เพื่อบันทึกข้อมูลจริง</li>
+              <li>ตั้ง cron job หรือ edge function สำหรับสรุปรายเดือนถ้าต้องการ</li>
+            </ol>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
