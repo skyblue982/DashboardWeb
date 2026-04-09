@@ -568,6 +568,21 @@ th {
   color: var(--text);
 }
 
+.ghost-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ghost-button:hover {
+  background: rgba(47, 36, 26, 0.08);
+  color: var(--text);
+}
+
 .toolbar-actions button {
   background: linear-gradient(135deg, var(--accent) 0%, #17564a 100%);
   color: white;
@@ -608,9 +623,44 @@ th {
   color: var(--muted);
 }
 
+.status-default {
+  background: rgba(83, 115, 199, 0.14);
+  color: #334b8f;
+}
+
 .management-list {
   display: grid;
   gap: 10px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(47, 36, 26, 0.36);
+  backdrop-filter: blur(8px);
+}
+
+.modal-backdrop[hidden] {
+  display: none !important;
+}
+
+.modal-card {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border-radius: var(--radius-xl);
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 54px rgba(47, 36, 26, 0.18);
+}
+
+.modal-head {
+  margin-bottom: 12px;
 }
 
 .management-item {
@@ -634,6 +684,42 @@ th {
 
 .management-actions select {
   min-width: 180px;
+}
+
+.management-item-room {
+  align-items: flex-start;
+}
+
+.management-item-room > div:first-child {
+  flex: 1;
+}
+
+.room-meta-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.management-room-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 8px;
+  min-width: min(100%, 560px);
+}
+
+.management-room-editor label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.management-room-editor .button-row {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .danger-button {
@@ -740,6 +826,11 @@ th {
   .portfolio-summary-grid,
   .owner-split {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .management-room-editor {
+    grid-template-columns: 1fr;
+    min-width: 100%;
   }
 
   .owner-breakdown-grid {

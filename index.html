@@ -142,8 +142,13 @@
                 <tr>
                   <th>ห้อง</th>
                   <th>เจ้าของ</th>
+                  <th>ผู้เช่า</th>
+                  <th>ค่ามัดจำ</th>
+                  <th>เริ่มสัญญา</th>
+                  <th>สิ้นสุดสัญญา</th>
                   <th>เงินลงทุน</th>
                   <th>ค่าเช่า</th>
+                  <th>ค่าเช่าเฉลี่ยต่อเดือน</th>
                   <th>ค่าใช้จ่าย</th>
                   <th>กำไรสุทธิ</th>
                   <th>ROI</th>
@@ -168,7 +173,7 @@
             <button type="button" class="entry-tab active" data-entry-tab="rent">ค่าเช่า</button>
             <button type="button" class="entry-tab" data-entry-tab="capital">ทุน</button>
             <button type="button" class="entry-tab" data-entry-tab="expense">ค่าใช้จ่าย</button>
-            <button type="button" class="entry-tab" data-entry-tab="setup">จัดการข้อมูล</button>
+            <button type="button" class="entry-tab" data-entry-tab="room-management">จัดการข้อมูลห้อง</button>
           </div>
         </section>
 
@@ -338,59 +343,23 @@
           </div>
         </div>
 
-        <div class="entry-tab-panel" data-entry-panel="setup">
+        <div class="entry-tab-panel" data-entry-panel="room-management">
           <div class="panel-grid form-grid">
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Room setup</p>
-                  <h3>เพิ่มห้องใหม่</h3>
-                </div>
-              </div>
-              <form class="entry-form" id="roomForm">
-                <label>
-                  เลขห้อง
-                  <input type="text" name="roomCode" placeholder="เช่น 45/510">
-                </label>
-                <label>
-                  เจ้าของห้อง
-                  <select name="ownerId" id="roomOwnerSelect"></select>
-                </label>
-                <label>
-                  หมายเหตุ
-                  <input type="text" name="notes" placeholder="เช่น ห้องใหม่ / เตรียมปล่อยเช่า">
-                </label>
-                <button type="submit">เพิ่มห้อง</button>
-              </form>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Owner setup</p>
-                  <h3>เพิ่มเจ้าของห้อง</h3>
-                </div>
-              </div>
-              <form class="entry-form" id="ownerForm">
-                <label>
-                  ชื่อเจ้าของห้อง
-                  <input type="text" name="ownerName" placeholder="เช่น ปรีดา">
-                </label>
-                <button type="submit">เพิ่มเจ้าของห้อง</button>
-              </form>
-            </section>
-
-            <section class="panel">
+            <section class="panel panel-span-2">
               <div class="panel-head">
                 <div>
                   <p class="eyebrow">Room management</p>
-                  <h3>ลบห้อง</h3>
+                  <h3>จัดการข้อมูลห้อง</h3>
+                </div>
+                <div class="management-actions">
+                  <button type="button" class="secondary-button" id="openOwnerModal">เพิ่มเจ้าของห้อง</button>
+                  <button type="button" class="secondary-button" id="openRoomModal">เพิ่มห้องใหม่</button>
                 </div>
               </div>
               <div id="roomDeleteList" class="management-list"></div>
             </section>
 
-            <section class="panel">
+            <section class="panel panel-span-2">
               <div class="panel-head">
                 <div>
                   <p class="eyebrow">Owner management</p>
@@ -399,19 +368,82 @@
               </div>
               <div id="ownerDeleteList" class="management-list"></div>
             </section>
-
-            <section class="panel panel-span-2">
-              <div class="panel-head">
-                <div>
-                  <p class="eyebrow">Preview</p>
-                  <h3>รายการที่เพิ่งบันทึก</h3>
-                </div>
-              </div>
-              <div id="entryPreview" class="activity-list"></div>
-            </section>
           </div>
         </div>
       </section>
+
+      <div class="modal-backdrop" id="roomModal" hidden>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="roomModalTitle">
+          <div class="panel-head modal-head">
+            <div>
+              <p class="eyebrow">Room setup</p>
+              <h3 id="roomModalTitle">เพิ่มห้องใหม่</h3>
+            </div>
+            <button type="button" class="ghost-button" id="closeRoomModal" aria-label="ปิด">ปิด</button>
+          </div>
+          <form class="entry-form" id="roomForm">
+            <label>
+              เลขห้อง
+              <input type="text" name="roomCode" placeholder="เช่น 45/510">
+            </label>
+            <label>
+              เจ้าของห้อง
+              <select name="ownerId" id="roomOwnerSelect"></select>
+            </label>
+            <label>
+              ชื่อผู้เช่า
+              <input type="text" name="tenantName" placeholder="เช่น คุณสมชาย">
+            </label>
+            <label>
+              การใช้งานห้อง
+              <select name="usageType">
+                <option value="rental">ปล่อยเช่า</option>
+                <option value="owner_use">อยู่เอง</option>
+              </select>
+            </label>
+            <label>
+              วันเริ่มสัญญา
+              <input type="text" name="contractStartDate" inputmode="numeric" placeholder="วว/ดด/ปปปป">
+            </label>
+            <label>
+              วันสิ้นสุดสัญญา
+              <input type="text" name="contractEndDate" inputmode="numeric" placeholder="วว/ดด/ปปปป">
+            </label>
+            <label>
+              เดือนเริ่มปล่อยเช่า
+              <input type="month" name="rentStartMonth">
+            </label>
+            <label>
+              ค่ามัดจำ
+              <input type="number" name="depositAmount" step="0.01" inputmode="decimal" placeholder="เช่น 13000">
+            </label>
+            <label>
+              หมายเหตุ
+              <input type="text" name="notes" placeholder="เช่น ห้องใหม่ / เตรียมปล่อยเช่า">
+            </label>
+            <button type="submit">เพิ่มห้อง</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="modal-backdrop" id="ownerModal" hidden>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="ownerModalTitle">
+          <div class="panel-head modal-head">
+            <div>
+              <p class="eyebrow">Owner setup</p>
+              <h3 id="ownerModalTitle">เพิ่มเจ้าของห้อง</h3>
+            </div>
+            <button type="button" class="ghost-button" id="closeOwnerModal" aria-label="ปิด">ปิด</button>
+          </div>
+          <form class="entry-form" id="ownerForm">
+            <label>
+              ชื่อเจ้าของห้อง
+              <input type="text" name="ownerName" placeholder="เช่น ปรีดา">
+            </label>
+            <button type="submit">เพิ่มเจ้าของห้อง</button>
+          </form>
+        </div>
+      </div>
 
       <section class="section" id="plan">
         <div class="panel-grid">

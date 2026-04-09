@@ -74,6 +74,38 @@ const expenseDeleteList = document.querySelector("#expenseDeleteList");
 const maintenanceRuleList = document.querySelector("#maintenanceRuleList");
 const roomDeleteList = document.querySelector("#roomDeleteList");
 const ownerDeleteList = document.querySelector("#ownerDeleteList");
+const roomModal = document.querySelector("#roomModal");
+const openRoomModalButton = document.querySelector("#openRoomModal");
+const closeRoomModalButton = document.querySelector("#closeRoomModal");
+const ownerModal = document.querySelector("#ownerModal");
+const openOwnerModalButton = document.querySelector("#openOwnerModal");
+const closeOwnerModalButton = document.querySelector("#closeOwnerModal");
+
+function openRoomModal() {
+  if (!roomModal) return;
+  roomModal.hidden = false;
+  document.body.style.overflow = "hidden";
+  roomModal.querySelector('input[name="roomCode"]')?.focus();
+}
+
+function closeRoomModal() {
+  if (!roomModal) return;
+  roomModal.hidden = true;
+  document.body.style.overflow = "";
+}
+
+function openOwnerModal() {
+  if (!ownerModal) return;
+  ownerModal.hidden = false;
+  document.body.style.overflow = "hidden";
+  ownerModal.querySelector('input[name="ownerName"]')?.focus();
+}
+
+function closeOwnerModal() {
+  if (!ownerModal) return;
+  ownerModal.hidden = true;
+  document.body.style.overflow = "";
+}
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("th-TH", {
@@ -88,6 +120,83 @@ function formatMoneyInput(value) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2
   }).format(Number(value || 0));
+}
+
+function formatDateDisplay(value) {
+  if (!value) return "-";
+  const parsedDate = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) return value;
+  return new Intl.DateTimeFormat("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(parsedDate);
+}
+
+function formatDateInput(value) {
+  if (!value) return "";
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
+}
+
+function parseDateInput(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+
+  const slashMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, dayRaw, monthRaw, yearRaw] = slashMatch;
+    const day = Number(dayRaw);
+    const month = Number(monthRaw);
+    const year = Number(yearRaw);
+    const parsedDate = new Date(year, month - 1, day);
+    const isValid = parsedDate.getFullYear() === year
+      && parsedDate.getMonth() === month - 1
+      && parsedDate.getDate() === day;
+    if (!isValid) return null;
+    return `${yearRaw}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  const isoMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return normalized;
+  return null;
+}
+
+function formatMonthInput(value) {
+  if (!value) return "";
+  const monthValue = monthKeyFromDate(value);
+  return /^\d{4}-\d{2}$/.test(monthValue) ? monthValue : "";
+}
+
+function parseMonthInput(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  const match = normalized.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const [, yearRaw, monthRaw] = match;
+  const month = Number(monthRaw);
+  if (month < 1 || month > 12) return null;
+  return `${yearRaw}-${monthRaw}-01`;
+}
+
+function formatOptionalCurrency(value) {
+  return value === null || value === undefined || value === "" ? "-" : formatMoneyInput(value);
+}
+
+function formatContractRange(startDate, endDate) {
+  if (!startDate && !endDate) return "ยังไม่ได้ระบุ";
+  return `${formatDateDisplay(startDate)} - ${formatDateDisplay(endDate)}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function formatCompact(value) {
@@ -161,7 +270,7 @@ function showError(message) {
     </article>
   `;
   recentActivity.innerHTML = card;
-  entryPreview.innerHTML = card;
+  if (entryPreview) entryPreview.innerHTML = card;
 }
 
 function setHelperMessage(element, message) {
@@ -296,7 +405,11 @@ function getRoomByIdMap() {
   return new Map(
     state.rooms.map((room) => [
       room.id,
-      { roomCode: room.room_code, ownerName: room.owner_name }
+      {
+        roomCode: room.room_code,
+        ownerName: room.owner_name,
+        tenantName: room.tenant_name
+      }
     ])
   );
 }
@@ -308,7 +421,8 @@ function getEnrichedTransactions() {
     return {
       ...tx,
       roomCode: roomInfo.roomCode || "-",
-      ownerName: roomInfo.ownerName || "-"
+      ownerName: roomInfo.ownerName || "-",
+      tenantName: roomInfo.tenantName || "-"
     };
   });
 }
@@ -337,6 +451,72 @@ function getMonthCountForTransactions() {
   return getSelectedMonthCount();
 }
 
+function isRentalRoom(room) {
+  return (room?.usage_type || "rental") === "rental";
+}
+
+function getRentalRooms() {
+  return state.rooms.filter((room) => isRentalRoom(room));
+}
+
+function countMonthsInclusive(startMonth, endMonth) {
+  if (!startMonth || !endMonth || startMonth > endMonth) return 0;
+  const [startYear, startMonthValue] = startMonth.split("-").map(Number);
+  const [endYear, endMonthValue] = endMonth.split("-").map(Number);
+  return ((endYear - startYear) * 12) + (endMonthValue - startMonthValue) + 1;
+}
+
+function getVisibleMonthRange() {
+  if (state.year !== ALL_YEARS) {
+    if (state.viewMode === "fullYear") {
+      return {
+        startMonth: composeMonthValue(state.year, "01"),
+        endMonth: composeMonthValue(state.year, "12")
+      };
+    }
+
+    return {
+      startMonth: composeMonthValue(state.year, state.monthFrom),
+      endMonth: composeMonthValue(state.year, state.monthTo)
+    };
+  }
+
+  const monthKeys = getRentTransactions()
+    .map((tx) => monthKeyFromDate(tx.tx_date))
+    .filter(Boolean)
+    .sort();
+
+  if (!monthKeys.length) {
+    const fallback = getDefaultMonthValue();
+    return { startMonth: fallback, endMonth: fallback };
+  }
+
+  return {
+    startMonth: monthKeys[0],
+    endMonth: monthKeys[monthKeys.length - 1]
+  };
+}
+
+function getEffectiveRentStartMonth(room) {
+  const explicitStartMonth = monthKeyFromDate(room.rent_start_date);
+  if (explicitStartMonth) return explicitStartMonth;
+
+  const firstRentMonth = getRentTransactions()
+    .filter((tx) => tx.room_id === room.id)
+    .map((tx) => monthKeyFromDate(tx.tx_date))
+    .filter(Boolean)
+    .sort()[0];
+
+  return firstRentMonth || "";
+}
+
+function getEligibleRentMonthCount(room) {
+  const { startMonth, endMonth } = getVisibleMonthRange();
+  const rentStartMonth = getEffectiveRentStartMonth(room);
+  const effectiveStartMonth = rentStartMonth && rentStartMonth > startMonth ? rentStartMonth : startMonth;
+  return countMonthsInclusive(effectiveStartMonth, endMonth);
+}
+
 function calculateAverageCapitalRoi(profit, capital, monthCount) {
   if (capital <= 0 || monthCount <= 0) {
     return { averageCapital: 0, roi: 0, monthCount: monthCount || 0 };
@@ -354,14 +534,21 @@ function calculateAverageCapitalRoi(profit, capital, monthCount) {
 }
 
 function getRoomMetrics() {
-  const rooms = state.rooms
+  const rooms = getRentalRooms()
     .filter((room) => state.owner === ALL_OWNERS || room.owner_name === state.owner)
     .map((room) => ({
       roomId: room.id,
       roomCode: room.room_code,
       owner: room.owner_name,
+      tenantName: room.tenant_name || "-",
+      usageType: room.usage_type || "rental",
+      depositAmount: room.deposit_amount ?? null,
+      contractStartDate: room.contract_start_date || null,
+      contractEndDate: room.contract_end_date || null,
+      rentStartDate: room.rent_start_date || null,
       capital: 0,
       rent: 0,
+      averageMonthlyRent: 0,
       expense: 0,
       profit: 0,
       roi: 0,
@@ -389,6 +576,9 @@ function getRoomMetrics() {
     const roomTransactions = getFilteredTransactions().filter((tx) => tx.room_id === room.roomId);
     const monthCount = getMonthCountForTransactions(roomTransactions);
     const roiMetrics = calculateAverageCapitalRoi(room.profit, room.capital, monthCount);
+    const roomSource = state.rooms.find((item) => item.id === room.roomId);
+    const eligibleRentMonths = roomSource ? getEligibleRentMonthCount(roomSource) : 0;
+    room.averageMonthlyRent = eligibleRentMonths > 0 ? Number((room.rent / eligibleRentMonths).toFixed(2)) : 0;
     room.monthCount = roiMetrics.monthCount;
     room.averageCapital = roiMetrics.averageCapital;
     room.roi = roiMetrics.roi;
@@ -439,6 +629,7 @@ function getSummary() {
     rent,
     expense,
     profit,
+    averageMonthlyRent: rooms.reduce((sum, room) => sum + room.averageMonthlyRent, 0),
     roi: roiMetrics.roi,
     averageCapital: roiMetrics.averageCapital,
     monthCount: roiMetrics.monthCount
@@ -516,7 +707,7 @@ function buildFilters() {
 function buildRentDraft(monthValue) {
   const rentTransactions = getRentTransactions();
 
-  state.rentDraftRows = state.rooms
+  state.rentDraftRows = getRentalRooms()
     .slice()
     .sort((a, b) => a.room_code.localeCompare(b.room_code))
     .map((room) => {
@@ -545,6 +736,7 @@ function buildRentDraft(monthValue) {
           roomId: room.id,
           roomCode: room.room_code,
           ownerName: room.owner_name,
+          tenantName: room.tenant_name || "",
           txId: null,
           amount: Number(latestBefore.amount),
           details: latestBefore.details || "",
@@ -557,6 +749,7 @@ function buildRentDraft(monthValue) {
         roomId: room.id,
         roomCode: room.room_code,
         ownerName: room.owner_name,
+        tenantName: room.tenant_name || "",
         txId: null,
         amount: "",
         details: "",
@@ -569,6 +762,7 @@ function buildRentDraft(monthValue) {
 function getSourceLabel(source) {
   if (source === "existing") return "มีข้อมูลเดือนนี้แล้ว";
   if (source === "latest") return "เติมจากเดือนล่าสุด";
+  if (source === "default") return "เติมจากค่าที่จำไว้";
   return "ยังไม่มีข้อมูลเดิม";
 }
 
@@ -588,7 +782,7 @@ function renderRentDraft() {
       <td>${row.ownerName}</td>
       <td><span class="status-pill status-${row.source}">${getSourceLabel(row.source)}</span></td>
       <td>${row.previousText}</td>
-        <td><input type="number" step="0.01" inputmode="decimal" data-index="${index}" data-field="amount" value="${row.amount}" placeholder="เช่น 6500"></td>
+      <td><input type="number" step="0.01" inputmode="decimal" data-index="${index}" data-field="amount" value="${row.amount}" placeholder="เช่น 6500"></td>
       <td><input type="text" data-index="${index}" data-field="details" value="${row.details}" placeholder="รายละเอียดเพิ่มเติม"></td>
     </tr>
   `).join("");
@@ -796,15 +990,17 @@ function renderRecentActivity() {
     </article>
   `).join("");
 
-  entryPreview.innerHTML = state.newEntries.length
-    ? state.newEntries.map((entry) => `
-      <article class="activity-card">
-        <strong>${entry.roomCode} • ${entry.item_name || entry.type}</strong>
-        <p class="subtext">${entry.details || "-"}</p>
-        <p class="subtext">${entry.tx_date || entry.date} • ${formatCurrency(entry.amount)}</p>
-      </article>
-    `).join("")
-    : `<article class="activity-card"><strong>ยังไม่มีรายการใหม่</strong><p class="subtext">เมื่อบันทึกรายการสำเร็จ จะขึ้นแสดงตรงนี้ทันที</p></article>`;
+  if (entryPreview) {
+    entryPreview.innerHTML = state.newEntries.length
+      ? state.newEntries.map((entry) => `
+        <article class="activity-card">
+          <strong>${entry.roomCode} • ${entry.item_name || entry.type}</strong>
+          <p class="subtext">${entry.details || "-"}</p>
+          <p class="subtext">${entry.tx_date || entry.date} • ${formatCurrency(entry.amount)}</p>
+        </article>
+      `).join("")
+      : `<article class="activity-card"><strong>ยังไม่มีรายการใหม่</strong><p class="subtext">เมื่อบันทึกรายการสำเร็จ จะขึ้นแสดงตรงนี้ทันที</p></article>`;
+  }
 }
 
 function renderTable() {
@@ -929,10 +1125,17 @@ function bindExpenseRecurringToggle() {
 }
 
 function bindExpenseDeleteFilters() {
-  if (!expenseRoom) return;
-  expenseRoom.addEventListener("change", () => {
-    renderManagementLists();
-  });
+  if (expenseRoom) {
+    expenseRoom.addEventListener("change", () => {
+      renderManagementLists();
+    });
+  }
+
+  if (capitalRoom) {
+    capitalRoom.addEventListener("change", () => {
+      renderManagementLists();
+    });
+  }
 }
 
 function rebuildRentDraftFromSelectors() {
@@ -1038,6 +1241,16 @@ function bindRoomForm() {
     const formData = new FormData(form);
     const roomCode = String(formData.get("roomCode") || "").trim();
     const ownerId = String(formData.get("ownerId") || "").trim();
+    const tenantName = String(formData.get("tenantName") || "").trim();
+    const usageType = String(formData.get("usageType") || "rental").trim() || "rental";
+    const contractStartDateInput = String(formData.get("contractStartDate") || "").trim();
+    const contractEndDateInput = String(formData.get("contractEndDate") || "").trim();
+    const contractStartDate = parseDateInput(contractStartDateInput);
+    const contractEndDate = parseDateInput(contractEndDateInput);
+    const rentStartMonthInput = String(formData.get("rentStartMonth") || "").trim();
+    const rentStartDate = parseMonthInput(rentStartMonthInput);
+    const depositRaw = String(formData.get("depositAmount") || "").trim();
+    const depositAmount = depositRaw === "" ? null : Number(depositRaw);
     const notes = String(formData.get("notes") || "").trim();
 
     if (!roomCode || !ownerId) {
@@ -1045,18 +1258,68 @@ function bindRoomForm() {
       return;
     }
 
+    if (depositRaw !== "" && (Number.isNaN(depositAmount) || depositAmount < 0)) {
+      alert("กรุณากรอกค่ามัดจำให้ถูกต้อง");
+      return;
+    }
+
+    if (contractStartDate === null || contractEndDate === null) {
+      alert("กรุณากรอกวันที่เป็นรูปแบบ วัน/เดือน/ปี");
+      return;
+    }
+
+    if (rentStartDate === null) {
+      alert("กรุณาเลือกเดือนเริ่มปล่อยเช่าให้ถูกต้อง");
+      return;
+    }
+
+    if (!["rental", "owner_use"].includes(usageType)) {
+      alert("กรุณาเลือกการใช้งานห้องให้ถูกต้อง");
+      return;
+    }
+
+    if (contractStartDate && contractEndDate && contractStartDate > contractEndDate) {
+      alert("วันสิ้นสุดสัญญาต้องไม่น้อยกว่าวันเริ่มสัญญา");
+      return;
+    }
+
     try {
       const { error } = await supabaseClient.from("rooms").insert({
         room_code: roomCode,
         owner_id: ownerId,
+        tenant_name: tenantName || null,
+        usage_type: usageType,
+        contract_start_date: contractStartDate || null,
+        contract_end_date: contractEndDate || null,
+        rent_start_date: usageType === "rental" ? (rentStartDate || null) : null,
+        deposit_amount: depositAmount,
         notes: notes || null
       });
       if (error) throw error;
       alert(`เพิ่มห้อง ${roomCode} เรียบร้อย`);
       form.reset();
+      closeRoomModal();
       await loadDashboardData();
     } catch (error) {
       alert(`เพิ่มห้องไม่สำเร็จ: ${error.message}`);
+    }
+  });
+}
+
+function bindRoomModal() {
+  openRoomModalButton?.addEventListener("click", openRoomModal);
+  closeRoomModalButton?.addEventListener("click", closeRoomModal);
+  roomModal?.addEventListener("click", (event) => {
+    if (event.target === roomModal) {
+      closeRoomModal();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && roomModal && !roomModal.hidden) {
+      closeRoomModal();
+    }
+    if (event.key === "Escape" && ownerModal && !ownerModal.hidden) {
+      closeOwnerModal();
     }
   });
 }
@@ -1107,9 +1370,20 @@ function bindOwnerForm() {
       if (error) throw error;
       alert(`เพิ่มเจ้าของห้อง ${ownerName} เรียบร้อย`);
       form.reset();
+      closeOwnerModal();
       await loadDashboardData();
     } catch (error) {
       alert(`เพิ่มเจ้าของห้องไม่สำเร็จ: ${error.message}`);
+    }
+  });
+}
+
+function bindOwnerModal() {
+  openOwnerModalButton?.addEventListener("click", openOwnerModal);
+  closeOwnerModalButton?.addEventListener("click", closeOwnerModal);
+  ownerModal?.addEventListener("click", (event) => {
+    if (event.target === ownerModal) {
+      closeOwnerModal();
     }
   });
 }
@@ -1286,7 +1560,10 @@ async function loadDashboardData() {
     { data: transactions, error: transactionsError }
   ] = await Promise.all([
     supabaseClient.from("owners").select("id, name").order("name"),
-    supabaseClient.from("rooms").select("id, room_code, owner_id").order("room_code"),
+    supabaseClient
+      .from("rooms")
+      .select("id, room_code, owner_id, tenant_name, usage_type, contract_start_date, contract_end_date, rent_start_date, deposit_amount, notes")
+      .order("room_code"),
     supabaseClient
       .from("transactions")
       .select("id, room_id, tx_date, flow_type, item_name, amount, details, created_at")
@@ -1342,8 +1619,13 @@ function renderPortfolioSummary() {
           <tr>
             <th>ห้อง</th>
             <th>เจ้าของ</th>
+            <th>ผู้เช่า</th>
+            <th>ค่ามัดจำ</th>
+            <th>เริ่มสัญญา</th>
+            <th>สิ้นสุดสัญญา</th>
             <th>เงินลงทุน</th>
             <th>ค่าเช่า</th>
+            <th>ค่าเช่าเฉลี่ยต่อเดือน</th>
             <th>ค่าใช้จ่าย</th>
             <th>กำไรสุทธิ</th>
             <th>ROI</th>
@@ -1354,8 +1636,13 @@ function renderPortfolioSummary() {
             <tr>
               <td>${room.roomCode}</td>
               <td>${room.owner}</td>
+              <td>${escapeHtml(room.tenantName)}</td>
+              <td>${formatOptionalCurrency(room.depositAmount)}</td>
+              <td>${formatDateDisplay(room.contractStartDate)}</td>
+              <td>${formatDateDisplay(room.contractEndDate)}</td>
               <td>${formatCurrency(room.capital)}</td>
               <td>${formatCurrency(room.rent)}</td>
+              <td>${formatMoneyInput(room.averageMonthlyRent)}</td>
               <td>${formatCurrency(room.expense)}</td>
               <td>${formatCurrency(room.profit)}</td>
               <td>${room.roi}%</td>
@@ -1364,8 +1651,13 @@ function renderPortfolioSummary() {
           <tr class="total-row">
             <td>Total</td>
             <td>${summary.rooms} ห้อง</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
             <td>${formatCurrency(summary.capital)}</td>
             <td>${formatCurrency(summary.rent)}</td>
+            <td>${summary.averageMonthlyRent > 0 ? formatMoneyInput(summary.averageMonthlyRent) : "-"}</td>
             <td>${formatCurrency(summary.expense)}</td>
             <td>${formatCurrency(summary.profit)}</td>
             <td>${summary.roi}%</td>
@@ -1415,8 +1707,13 @@ function renderTable() {
       <tr>
         <td>${room.roomCode}</td>
         <td>${room.owner}</td>
+        <td>${escapeHtml(room.tenantName)}</td>
+        <td>${formatOptionalCurrency(room.depositAmount)}</td>
+        <td>${formatDateDisplay(room.contractStartDate)}</td>
+        <td>${formatDateDisplay(room.contractEndDate)}</td>
         <td>${formatCurrency(room.capital)}</td>
         <td>${formatCurrency(room.rent)}</td>
+        <td>${formatMoneyInput(room.averageMonthlyRent)}</td>
         <td>${formatCurrency(room.expense)}</td>
         <td>${formatCurrency(room.profit)}</td>
         <td>${room.roi}%</td>
@@ -1425,8 +1722,13 @@ function renderTable() {
     <tr class="total-row">
       <td>Total</td>
       <td>${summary.rooms} ห้อง</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
       <td>${formatCurrency(summary.capital)}</td>
       <td>${formatCurrency(summary.rent)}</td>
+      <td>${summary.averageMonthlyRent > 0 ? formatMoneyInput(summary.averageMonthlyRent) : "-"}</td>
       <td>${formatCurrency(summary.expense)}</td>
       <td>${formatCurrency(summary.profit)}</td>
       <td>${summary.roi}%</td>
@@ -1450,8 +1752,10 @@ function removeRoomsSection() {
 }
 
 function renderManagementLists() {
+  const selectedCapitalRoom = capitalRoom?.value || "";
   const capitalRows = getEnrichedTransactions()
     .filter((tx) => tx.flow_type === "capital")
+    .filter((tx) => !selectedCapitalRoom || tx.roomCode === selectedCapitalRoom)
     .sort((a, b) => new Date(b.tx_date) - new Date(a.tx_date))
     .slice(0, 20);
 
@@ -1465,18 +1769,18 @@ function renderManagementLists() {
   capitalDeleteList.innerHTML = capitalRows.map((tx) => `
     <article class="management-item">
       <div>
-        <strong>${tx.roomCode} โ€ข ${formatCurrency(tx.amount)}</strong>
-        <p class="subtext">${tx.item_name || "ทุน"} โ€ข ${tx.tx_date}${tx.details ? ` โ€ข ${tx.details}` : ""}</p>
+        <strong>${tx.roomCode} • ${formatCurrency(tx.amount)}</strong>
+        <p class="subtext">${tx.item_name || "ทุน"} • ${tx.tx_date}${tx.details ? ` • ${tx.details}` : ""}</p>
       </div>
       <button type="button" class="danger-button" data-capital-id="${tx.id}" data-capital-room="${tx.roomCode}">ลบทุน</button>
     </article>
-  `).join("") || `<article class="management-item"><div><strong>ยังไม่มีรายการทุน</strong><p class="subtext">เมื่อมีการบันทึกทุน รายการจะขึ้นที่นี่</p></div></article>`;
+  `).join("") || `<article class="management-item"><div><strong>ยังไม่มีรายการทุน</strong><p class="subtext">รายการนี้จะอิงตามห้องที่เลือกด้านบน</p></div></article>`;
 
   expenseDeleteList.innerHTML = expenseRows.map((tx) => `
     <article class="management-item">
       <div>
-        <strong>${tx.roomCode} โ€ข ${formatCurrency(tx.amount)}</strong>
-        <p class="subtext">${tx.tx_date}${tx.details ? ` โ€ข ${tx.details}` : ""}</p>
+        <strong>${tx.roomCode} • ${formatCurrency(tx.amount)}</strong>
+        <p class="subtext">${tx.tx_date}${tx.details ? ` • ${tx.details}` : ""}</p>
       </div>
       <button type="button" class="danger-button" data-expense-id="${tx.id}" data-expense-room="${tx.roomCode}">ลบค่าใช้จ่าย</button>
     </article>
@@ -1486,21 +1790,64 @@ function renderManagementLists() {
     .slice()
     .sort((a, b) => a.room_code.localeCompare(b.room_code))
     .map((room) => `
-      <article class="management-item">
+      <article class="management-item management-item-room">
         <div>
           <strong>${room.room_code}</strong>
-          <p class="subtext">เจ้าของปัจจุบัน: ${room.owner_name}</p>
+          <div class="room-meta-list">
+            <p class="subtext">เจ้าของปัจจุบัน: ${escapeHtml(room.owner_name)}</p>
+            <p class="subtext">การใช้งาน: ${room.usage_type === "owner_use" ? "อยู่เอง" : "ปล่อยเช่า"}</p>
+            <p class="subtext">ผู้เช่า: ${escapeHtml(room.tenant_name || "-")}</p>
+            <p class="subtext">สัญญา: ${formatContractRange(room.contract_start_date, room.contract_end_date)}</p>
+            <p class="subtext">เริ่มปล่อยเช่า: ${isRentalRoom(room) && room.rent_start_date ? formatMonthLabel(monthKeyFromDate(room.rent_start_date)) : "-"}</p>
+            <p class="subtext">ค่ามัดจำ: ${formatOptionalCurrency(room.deposit_amount)}</p>
+          </div>
         </div>
-        <div class="management-actions">
-          <select data-room-owner-select="${room.id}">
-            ${state.owners
-              .slice()
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((owner) => `<option value="${owner.id}" ${owner.id === room.owner_id ? "selected" : ""}>${owner.name}</option>`)
-              .join("")}
-          </select>
-          <button type="button" class="secondary-button" data-room-owner-update="${room.id}" data-room-code="${room.room_code}">เปลี่ยนเจ้าของ</button>
-          <button type="button" class="danger-button" data-room-id="${room.id}" data-room-code="${room.room_code}">ลบห้อง</button>
+        <div class="management-room-editor">
+          <label>
+            เจ้าของห้อง
+            <select data-room-owner-select="${room.id}">
+              ${state.owners
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((owner) => `<option value="${owner.id}" ${owner.id === room.owner_id ? "selected" : ""}>${owner.name}</option>`)
+                .join("")}
+            </select>
+          </label>
+          <label>
+            ชื่อผู้เช่า
+            <input type="text" data-room-tenant-input="${room.id}" value="${escapeHtml(room.tenant_name || "")}" placeholder="เช่น คุณสมชาย">
+          </label>
+          <label>
+            การใช้งานห้อง
+            <select data-room-usage-type="${room.id}">
+              <option value="rental" ${(room.usage_type || "rental") === "rental" ? "selected" : ""}>ปล่อยเช่า</option>
+              <option value="owner_use" ${(room.usage_type || "rental") === "owner_use" ? "selected" : ""}>อยู่เอง</option>
+            </select>
+          </label>
+          <label>
+            วันเริ่มสัญญา
+            <input type="text" inputmode="numeric" data-room-contract-start="${room.id}" value="${formatDateInput(room.contract_start_date || "")}" placeholder="วว/ดด/ปปปป">
+          </label>
+          <label>
+            วันสิ้นสุดสัญญา
+            <input type="text" inputmode="numeric" data-room-contract-end="${room.id}" value="${formatDateInput(room.contract_end_date || "")}" placeholder="วว/ดด/ปปปป">
+          </label>
+          <label>
+            เดือนเริ่มปล่อยเช่า
+            <input type="month" data-room-rent-start="${room.id}" value="${formatMonthInput(room.rent_start_date || "")}">
+          </label>
+          <label>
+            ค่ามัดจำ
+            <input type="number" step="0.01" inputmode="decimal" data-room-deposit="${room.id}" value="${room.deposit_amount ?? ""}" placeholder="เช่น 13000">
+          </label>
+          <label>
+            หมายเหตุ
+            <input type="text" data-room-notes-input="${room.id}" value="${escapeHtml(room.notes || "")}" placeholder="รายละเอียดเพิ่มเติม">
+          </label>
+          <div class="button-row">
+            <button type="button" class="secondary-button" data-room-update="${room.id}" data-room-code="${room.room_code}">บันทึกข้อมูลห้อง</button>
+            <button type="button" class="danger-button" data-room-id="${room.id}" data-room-code="${room.room_code}">ลบห้อง</button>
+          </div>
         </div>
       </article>
     `).join("");
@@ -1525,25 +1872,82 @@ function renderManagementLists() {
 function bindRoomOwnerUpdates() {
   roomDeleteList.addEventListener("click", async (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement) || !target.dataset.roomOwnerUpdate) return;
+    if (!(target instanceof HTMLButtonElement) || !target.dataset.roomUpdate) return;
 
-    const roomId = target.dataset.roomOwnerUpdate;
+    const roomId = target.dataset.roomUpdate;
     const roomCode = target.dataset.roomCode || "";
     const ownerSelect = roomDeleteList.querySelector(`[data-room-owner-select="${roomId}"]`);
+    const tenantInput = roomDeleteList.querySelector(`[data-room-tenant-input="${roomId}"]`);
+    const usageTypeInput = roomDeleteList.querySelector(`[data-room-usage-type="${roomId}"]`);
+    const contractStartInput = roomDeleteList.querySelector(`[data-room-contract-start="${roomId}"]`);
+    const contractEndInput = roomDeleteList.querySelector(`[data-room-contract-end="${roomId}"]`);
+    const rentStartInput = roomDeleteList.querySelector(`[data-room-rent-start="${roomId}"]`);
+    const depositInput = roomDeleteList.querySelector(`[data-room-deposit="${roomId}"]`);
+    const notesInput = roomDeleteList.querySelector(`[data-room-notes-input="${roomId}"]`);
     if (!(ownerSelect instanceof HTMLSelectElement)) return;
+    if (!(tenantInput instanceof HTMLInputElement)) return;
+    if (!(usageTypeInput instanceof HTMLSelectElement)) return;
+    if (!(contractStartInput instanceof HTMLInputElement)) return;
+    if (!(contractEndInput instanceof HTMLInputElement)) return;
+    if (!(rentStartInput instanceof HTMLInputElement)) return;
+    if (!(depositInput instanceof HTMLInputElement)) return;
+    if (!(notesInput instanceof HTMLInputElement)) return;
 
     const ownerId = ownerSelect.value;
     const ownerName = ownerSelect.options[ownerSelect.selectedIndex]?.textContent || "-";
-    const confirmed = window.confirm(`เปลี่ยนเจ้าของห้อง ${roomCode} เป็น ${ownerName} ใช่หรือไม่?`);
+    const tenantName = tenantInput.value.trim();
+    const usageType = usageTypeInput.value.trim() || "rental";
+    const contractStartDate = parseDateInput(contractStartInput.value.trim());
+    const contractEndDate = parseDateInput(contractEndInput.value.trim());
+    const rentStartDate = parseMonthInput(rentStartInput.value.trim());
+    const depositRaw = depositInput.value.trim();
+    const depositAmount = depositRaw === "" ? null : Number(depositRaw);
+    const notes = notesInput.value.trim();
+
+    if (contractStartDate === null || contractEndDate === null) {
+      alert("กรุณากรอกวันที่เป็นรูปแบบ วัน/เดือน/ปี");
+      return;
+    }
+
+    if (rentStartDate === null) {
+      alert("กรุณาเลือกเดือนเริ่มปล่อยเช่าให้ถูกต้อง");
+      return;
+    }
+
+    if (!["rental", "owner_use"].includes(usageType)) {
+      alert("กรุณาเลือกการใช้งานห้องให้ถูกต้อง");
+      return;
+    }
+
+    if (depositRaw !== "" && (Number.isNaN(depositAmount) || depositAmount < 0)) {
+      alert("กรุณากรอกค่ามัดจำให้ถูกต้อง");
+      return;
+    }
+
+    if (contractStartDate && contractEndDate && contractStartDate > contractEndDate) {
+      alert("วันสิ้นสุดสัญญาต้องไม่น้อยกว่าวันเริ่มสัญญา");
+      return;
+    }
+
+    const confirmed = window.confirm(`บันทึกข้อมูลห้อง ${roomCode} ใช่หรือไม่?`);
     if (!confirmed) return;
 
     try {
-      const { error } = await supabaseClient.from("rooms").update({ owner_id: ownerId }).eq("id", roomId);
+      const { error } = await supabaseClient.from("rooms").update({
+        owner_id: ownerId,
+        tenant_name: tenantName || null,
+        usage_type: usageType,
+        contract_start_date: contractStartDate || null,
+        contract_end_date: contractEndDate || null,
+        rent_start_date: usageType === "rental" ? (rentStartDate || null) : null,
+        deposit_amount: depositAmount,
+        notes: notes || null
+      }).eq("id", roomId);
       if (error) throw error;
-      alert(`เปลี่ยนเจ้าของห้อง ${roomCode} เป็น ${ownerName} เรียบร้อย`);
+      alert(`บันทึกข้อมูลห้อง ${roomCode} เรียบร้อย`);
       await loadDashboardData();
     } catch (error) {
-      alert(`เปลี่ยนเจ้าของห้องไม่สำเร็จ: ${error.message}`);
+      alert(`บันทึกข้อมูลห้องไม่สำเร็จ: ${error.message}`);
     }
   });
 }
@@ -1561,7 +1965,9 @@ async function init() {
   bindRentDraft();
   bindCapitalForm();
   bindRoomForm();
+  bindRoomModal();
   bindOwnerForm();
+  bindOwnerModal();
   bindManagementDeletes();
   bindRoomOwnerUpdates();
   bindExpenseForm();
