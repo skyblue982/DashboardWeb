@@ -522,7 +522,9 @@ function getEffectiveRentStartMonth(room) {
 function getEligibleRentMonthCount(room) {
   const { startMonth, endMonth } = getVisibleMonthRange();
   const rentStartMonth = getEffectiveRentStartMonth(room);
-  const effectiveStartMonth = rentStartMonth && rentStartMonth > startMonth ? rentStartMonth : startMonth;
+  if (!rentStartMonth) return 0;
+
+  const effectiveStartMonth = rentStartMonth > startMonth ? rentStartMonth : startMonth;
   return countMonthsInclusive(effectiveStartMonth, endMonth);
 }
 
@@ -562,7 +564,7 @@ function getRoomMetrics() {
       profit: 0,
       roi: 0,
       averageCapital: 0,
-      monthCount: state.year === ALL_YEARS ? 12 : 0
+      monthCount: 0
     }));
 
   const roomMap = new Map(rooms.map((room) => [room.roomId, room]));
@@ -582,11 +584,11 @@ function getRoomMetrics() {
 
   rooms.forEach((room) => {
     room.profit = room.rent - room.expense;
-    const roomTransactions = getFilteredTransactions().filter((tx) => tx.room_id === room.roomId);
-    const monthCount = getMonthCountForTransactions(roomTransactions);
-    const roiMetrics = calculateAverageCapitalRoi(room.profit, room.capital, monthCount);
     const roomSource = state.rooms.find((item) => item.id === room.roomId);
     const eligibleRentMonths = roomSource ? getEligibleRentMonthCount(roomSource) : 0;
+    
+    const roiMetrics = calculateAverageCapitalRoi(room.profit, room.capital, eligibleRentMonths);
+    
     room.averageMonthlyRent = eligibleRentMonths > 0 ? Number((room.rent / eligibleRentMonths).toFixed(2)) : 0;
     room.monthCount = roiMetrics.monthCount;
     room.averageCapital = roiMetrics.averageCapital;
@@ -607,9 +609,10 @@ function getOwnerMetrics() {
     const rent = ownerRooms.reduce((sum, room) => sum + room.rent, 0);
     const expense = ownerRooms.reduce((sum, room) => sum + room.expense, 0);
     const profit = rent - expense;
-    const ownerTransactions = getFilteredTransactions().filter((tx) => tx.ownerName === owner.name);
-    const monthCount = getMonthCountForTransactions(ownerTransactions);
-    const roiMetrics = calculateAverageCapitalRoi(profit, capital, monthCount);
+    
+    const averageCapital = ownerRooms.reduce((sum, room) => sum + room.averageCapital, 0);
+    const roi = averageCapital > 0 ? Number(((profit / averageCapital) * 100).toFixed(2)) : 0;
+    
     return {
       name: owner.name,
       rooms: ownerRooms.length,
@@ -617,11 +620,11 @@ function getOwnerMetrics() {
       rent,
       expense,
       profit,
-      roi: roiMetrics.roi,
-      averageCapital: roiMetrics.averageCapital,
-      monthCount: roiMetrics.monthCount
+      roi,
+      averageCapital,
+      monthCount: ownerRooms.reduce((max, room) => Math.max(max, room.monthCount), 0)
     };
-  });
+  }).filter((owner) => owner.rooms > 0);
 }
 
 function getSummary() {
@@ -630,8 +633,10 @@ function getSummary() {
   const rent = rooms.reduce((sum, room) => sum + room.rent, 0);
   const expense = rooms.reduce((sum, room) => sum + room.expense, 0);
   const profit = rent - expense;
-  const monthCount = getMonthCountForTransactions(getFilteredTransactions());
-  const roiMetrics = calculateAverageCapitalRoi(profit, capital, monthCount);
+  
+  const averageCapital = rooms.reduce((sum, room) => sum + room.averageCapital, 0);
+  const roi = averageCapital > 0 ? Number(((profit / averageCapital) * 100).toFixed(2)) : 0;
+
   return {
     rooms: rooms.length,
     capital,
@@ -639,9 +644,9 @@ function getSummary() {
     expense,
     profit,
     averageMonthlyRent: rooms.reduce((sum, room) => sum + room.averageMonthlyRent, 0),
-    roi: roiMetrics.roi,
-    averageCapital: roiMetrics.averageCapital,
-    monthCount: roiMetrics.monthCount
+    roi,
+    averageCapital,
+    monthCount: rooms.reduce((max, room) => Math.max(max, room.monthCount), 0)
   };
 }
 
