@@ -93,6 +93,16 @@
             </div>
             <div id="ownerSplit" class="owner-split"></div>
           </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Owner use rooms</p>
+                <h3>ห้องที่อยู่เอง</h3>
+              </div>
+            </div>
+            <div id="ownerUseRooms" class="owner-use-grid"></div>
+          </section>
         </div>
 
         <div class="panel-grid">
@@ -140,6 +150,7 @@
             <table>
               <thead>
                 <tr>
+                  <th>Run</th>
                   <th>ห้อง</th>
                   <th>เจ้าของ</th>
                   <th>ผู้เช่า</th>
@@ -352,6 +363,18 @@
                   <h3>จัดการข้อมูลห้อง</h3>
                 </div>
                 <div class="management-actions">
+                  <label class="management-filter">
+                    เจ้าของห้อง
+                    <select id="managementOwnerFilter"></select>
+                  </label>
+                  <label class="management-filter">
+                    การใช้งานห้อง
+                    <select id="managementUsageFilter">
+                      <option value="all">ทั้งหมด</option>
+                      <option value="rental">ปล่อยเช่า</option>
+                      <option value="owner_use">อยู่เอง</option>
+                    </select>
+                  </label>
                   <button type="button" class="secondary-button" id="openOwnerModal">เพิ่มเจ้าของห้อง</button>
                   <button type="button" class="secondary-button" id="openRoomModal">เพิ่มห้องใหม่</button>
                 </div>

@@ -26,6 +26,12 @@ const state = {
   viewMode: "average",
   monthFrom: "01",
   monthTo: "12",
+  managementOwner: ALL_OWNERS,
+  managementUsage: "all",
+  roomTableSort: {
+    key: "profit",
+    direction: "desc"
+  },
   owners: [],
   rooms: [],
   transactions: [],
@@ -46,6 +52,7 @@ const monthToFilter = document.querySelector("#monthToFilter");
 const metricGrid = document.querySelector("#metricGrid");
 const portfolioSummary = document.querySelector("#portfolioSummary");
 const ownerSplit = document.querySelector("#ownerSplit");
+const ownerUseRooms = document.querySelector("#ownerUseRooms");
 const highlightCards = document.querySelector("#highlightCards");
 const recentActivity = document.querySelector("#recentActivity");
 const maintenanceAlerts = document.querySelector("#maintenanceAlerts");
@@ -74,6 +81,8 @@ const expenseDeleteList = document.querySelector("#expenseDeleteList");
 const maintenanceRuleList = document.querySelector("#maintenanceRuleList");
 const roomDeleteList = document.querySelector("#roomDeleteList");
 const ownerDeleteList = document.querySelector("#ownerDeleteList");
+const managementOwnerFilter = document.querySelector("#managementOwnerFilter");
+const managementUsageFilter = document.querySelector("#managementUsageFilter");
 const roomModal = document.querySelector("#roomModal");
 const openRoomModalButton = document.querySelector("#openRoomModal");
 const closeRoomModalButton = document.querySelector("#closeRoomModal");
@@ -636,6 +645,91 @@ function getSummary() {
   };
 }
 
+function getOwnerUseRooms() {
+  return state.rooms
+    .filter((room) => room.usage_type === "owner_use")
+    .filter((room) => state.owner === ALL_OWNERS || room.owner_name === state.owner)
+    .slice()
+    .sort((a, b) => a.room_code.localeCompare(b.room_code));
+}
+
+function getOwnerUseMetrics() {
+  const rooms = getOwnerUseRooms().map((room) => ({
+    roomId: room.id,
+    roomCode: room.room_code,
+    owner: room.owner_name || "-",
+    tenantName: room.tenant_name || "-",
+    depositAmount: room.deposit_amount ?? null,
+    contractStartDate: room.contract_start_date || null,
+    contractEndDate: room.contract_end_date || null,
+    capital: 0
+  }));
+
+  const roomMap = new Map(rooms.map((room) => [room.roomId, room]));
+  getCapitalTransactions().forEach((tx) => {
+    const room = roomMap.get(tx.room_id);
+    if (!room) return;
+    room.capital += Number(tx.amount);
+  });
+
+  return rooms;
+}
+
+function getOwnerUseSummary() {
+  const rooms = getOwnerUseMetrics();
+  return {
+    rooms: rooms.length,
+    capital: rooms.reduce((sum, room) => sum + room.capital, 0)
+  };
+}
+
+function getManagedRooms() {
+  return state.rooms
+    .filter((room) => state.managementOwner === ALL_OWNERS || room.owner_name === state.managementOwner)
+    .filter((room) => state.managementUsage === "all" || (room.usage_type || "rental") === state.managementUsage)
+    .slice()
+    .sort((a, b) => a.room_code.localeCompare(b.room_code));
+}
+
+function toggleRoomTableSort(key) {
+  if (state.roomTableSort.key === key) {
+    state.roomTableSort.direction = state.roomTableSort.direction === "asc" ? "desc" : "asc";
+    return;
+  }
+
+  state.roomTableSort.key = key;
+  state.roomTableSort.direction = ["roomCode", "owner", "tenantName", "contractStartDate", "contractEndDate"].includes(key)
+    ? "asc"
+    : "desc";
+}
+
+function getSortedRoomMetrics() {
+  const rooms = [...getRoomMetrics()];
+  const { key, direction } = state.roomTableSort;
+  const factor = direction === "asc" ? 1 : -1;
+
+  return rooms.sort((a, b) => {
+    const left = a[key];
+    const right = b[key];
+
+    if (["roomCode", "owner", "tenantName"].includes(key)) {
+      return String(left || "").localeCompare(String(right || ""), "th") * factor;
+    }
+
+    if (["contractStartDate", "contractEndDate"].includes(key)) {
+      return String(left || "").localeCompare(String(right || ""), "th") * factor;
+    }
+
+    return ((Number(left) || 0) - (Number(right) || 0)) * factor;
+  });
+}
+
+function renderSortableHeader(label, key) {
+  const isActive = state.roomTableSort.key === key;
+  const sortArrow = isActive ? (state.roomTableSort.direction === "asc" ? " ▲" : " ▼") : "";
+  return `<button type="button" class="table-sort ${isActive ? "active" : ""}" data-room-sort="${key}">${label}${sortArrow}</button>`;
+}
+
 function ensureRentDraftSelection() {
   const fallback = getDefaultMonthValue();
   const [fallbackYear, fallbackMonth] = fallback.split("-");
@@ -694,6 +788,17 @@ function buildFilters() {
   roomOwnerSelect.innerHTML = state.owners
     .map((owner) => `<option value="${owner.id}" ${owner.id === selectedOwnerId ? "selected" : ""}>${owner.name}</option>`)
     .join("");
+
+  if (managementOwnerFilter) {
+    const managementOwnerOptions = [ALL_OWNERS, ...state.owners.map((owner) => owner.name)];
+    managementOwnerFilter.innerHTML = managementOwnerOptions
+      .map((owner) => `<option value="${owner}" ${owner === state.managementOwner ? "selected" : ""}>${owner}</option>`)
+      .join("");
+  }
+
+  if (managementUsageFilter) {
+    managementUsageFilter.value = state.managementUsage;
+  }
 
   ensureRentDraftSelection();
   rentYearSelect.innerHTML = getRentYearOptions()
@@ -943,6 +1048,10 @@ function renderPortfolioSummary() {
   `).join("");
 }
 
+function renderOwnerUseRooms() {
+  return;
+}
+
 function renderOwnerSplit() {
   ownerSplit.innerHTML = getOwnerMetrics().map((owner) => `
     <article class="owner-breakdown-card">
@@ -1004,7 +1113,7 @@ function renderRecentActivity() {
 }
 
 function renderTable() {
-  const rooms = [...getRoomMetrics()].sort((a, b) => b.profit - a.profit);
+  const rooms = getSortedRoomMetrics();
   roomTableBody.innerHTML = rooms.map((room) => `
     <tr>
       <td>${room.roomCode}</td>
@@ -1022,6 +1131,7 @@ function renderAll() {
   buildFilters();
   renderMetrics();
   renderPortfolioSummary();
+  renderOwnerUseRooms();
   renderOwnerSplit();
   renderMaintenanceAlerts();
   renderHighlights();
@@ -1092,6 +1202,28 @@ function bindFilters() {
     if (!(target instanceof HTMLButtonElement) || !target.dataset.viewMode) return;
     state.viewMode = target.dataset.viewMode;
     renderAll();
+  });
+
+  managementOwnerFilter?.addEventListener("change", (event) => {
+    state.managementOwner = event.target.value;
+    renderManagementLists();
+  });
+
+  managementUsageFilter?.addEventListener("change", (event) => {
+    state.managementUsage = event.target.value;
+    renderManagementLists();
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const sortButton = target.closest("[data-room-sort]");
+    if (!(sortButton instanceof HTMLButtonElement)) return;
+
+    toggleRoomTableSort(sortButton.dataset.roomSort);
+    renderPortfolioSummary();
+    renderTable();
   });
 }
 
@@ -1609,7 +1741,127 @@ async function loadDashboardData() {
 }
 
 function renderPortfolioSummary() {
-  const rooms = [...getRoomMetrics()].sort((a, b) => b.profit - a.profit);
+  const sortedRooms = getSortedRoomMetrics();
+  const summaryData = getSummary();
+  const ownerUseRooms = getOwnerUseMetrics();
+  const ownerUseSummary = getOwnerUseSummary();
+  const combinedSummary = {
+    rooms: summaryData.rooms + ownerUseSummary.rooms,
+    capital: summaryData.capital + ownerUseSummary.capital
+  };
+
+  portfolioSummary.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Run</th>
+            <th>${renderSortableHeader("ห้อง", "roomCode")}</th>
+            <th>${renderSortableHeader("เจ้าของ", "owner")}</th>
+            <th>${renderSortableHeader("ผู้เช่า", "tenantName")}</th>
+            <th>${renderSortableHeader("ค่ามัดจำ", "depositAmount")}</th>
+            <th>${renderSortableHeader("เริ่มสัญญา", "contractStartDate")}</th>
+            <th>${renderSortableHeader("สิ้นสุดสัญญา", "contractEndDate")}</th>
+            <th>${renderSortableHeader("เงินลงทุน", "capital")}</th>
+            <th>${renderSortableHeader("ค่าเช่า", "rent")}</th>
+            <th>${renderSortableHeader("ค่าเช่าเฉลี่ยต่อเดือน", "averageMonthlyRent")}</th>
+            <th>${renderSortableHeader("ค่าใช้จ่าย", "expense")}</th>
+            <th>${renderSortableHeader("กำไรสุทธิ", "profit")}</th>
+            <th>${renderSortableHeader("ROI", "roi")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sortedRooms.map((room, index) => `
+            <tr>
+              <td>${index + 1}</td>
+              <td>${room.roomCode}</td>
+              <td>${room.owner}</td>
+              <td>${escapeHtml(room.tenantName)}</td>
+              <td>${formatOptionalCurrency(room.depositAmount)}</td>
+              <td>${formatDateDisplay(room.contractStartDate)}</td>
+              <td>${formatDateDisplay(room.contractEndDate)}</td>
+              <td>${formatCurrency(room.capital)}</td>
+              <td>${formatCurrency(room.rent)}</td>
+              <td>${formatMoneyInput(room.averageMonthlyRent)}</td>
+              <td>${formatCurrency(room.expense)}</td>
+              <td>${formatCurrency(room.profit)}</td>
+              <td>${room.roi}%</td>
+            </tr>
+          `).join("")}
+          <tr class="total-row">
+            <td>Total ปล่อยเช่า</td>
+            <td>${summaryData.rooms} ห้อง</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>${formatCurrency(summaryData.capital)}</td>
+            <td>${formatCurrency(summaryData.rent)}</td>
+            <td>${summaryData.averageMonthlyRent > 0 ? formatMoneyInput(summaryData.averageMonthlyRent) : "-"}</td>
+            <td>${formatCurrency(summaryData.expense)}</td>
+            <td>${formatCurrency(summaryData.profit)}</td>
+            <td>${summaryData.roi}%</td>
+          </tr>
+          ${ownerUseRooms.length ? `
+            <tr class="owner-use-section-row">
+              <td colspan="13">ห้องที่อยู่เอง (แสดงข้อมูลเท่านั้น ไม่นำมาคิดกำไร ขาดทุน และ ROI)</td>
+            </tr>
+            ${ownerUseRooms.map((room) => `
+              <tr class="owner-use-row">
+                <td>อยู่เอง</td>
+                <td>${escapeHtml(room.roomCode)}</td>
+                <td>${escapeHtml(room.owner)}</td>
+                <td>${escapeHtml(room.tenantName)}</td>
+                <td>${formatOptionalCurrency(room.depositAmount)}</td>
+                <td>${formatDateDisplay(room.contractStartDate)}</td>
+                <td>${formatDateDisplay(room.contractEndDate)}</td>
+                <td>${formatCurrency(room.capital)}</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+              </tr>
+            `).join("")}
+            <tr class="owner-use-total-row">
+              <td>Total อยู่เอง</td>
+              <td>${ownerUseSummary.rooms} ห้อง</td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td>${formatCurrency(ownerUseSummary.capital)}</td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+            </tr>
+          ` : ""}
+          <tr class="grand-total-row">
+            <td>Total รวมทุกห้อง</td>
+            <td>${combinedSummary.rooms} ห้อง</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>${formatCurrency(combinedSummary.capital)}</td>
+            <td>${formatCurrency(summaryData.rent)}</td>
+            <td>${summaryData.averageMonthlyRent > 0 ? formatMoneyInput(summaryData.averageMonthlyRent) : "-"}</td>
+            <td>${formatCurrency(summaryData.expense)}</td>
+            <td>${formatCurrency(summaryData.profit)}</td>
+            <td>${summaryData.roi}%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+  return;
+
+  const rooms = getSortedRoomMetrics();
   const summary = getSummary();
 
   portfolioSummary.innerHTML = `
@@ -1699,12 +1951,14 @@ function renderMetrics() {
 function renderTable() {
   if (!roomTableBody) return;
 
-  const rooms = [...getRoomMetrics()].sort((a, b) => b.profit - a.profit);
+  const rooms = getSortedRoomMetrics();
   const summary = getSummary();
+  const ownerUseRooms = getOwnerUseRooms();
 
   roomTableBody.innerHTML = `
-    ${rooms.map((room) => `
+    ${rooms.map((room, index) => `
       <tr>
+        <td>${index + 1}</td>
         <td>${room.roomCode}</td>
         <td>${room.owner}</td>
         <td>${escapeHtml(room.tenantName)}</td>
@@ -1726,6 +1980,7 @@ function renderTable() {
       <td>-</td>
       <td>-</td>
       <td>-</td>
+      <td>-</td>
       <td>${formatCurrency(summary.capital)}</td>
       <td>${formatCurrency(summary.rent)}</td>
       <td>${summary.averageMonthlyRent > 0 ? formatMoneyInput(summary.averageMonthlyRent) : "-"}</td>
@@ -1733,6 +1988,28 @@ function renderTable() {
       <td>${formatCurrency(summary.profit)}</td>
       <td>${summary.roi}%</td>
     </tr>
+    ${ownerUseRooms.length ? `
+      <tr class="owner-use-section-row">
+        <td colspan="13">ห้องที่อยู่เอง (แสดงข้อมูลเท่านั้น ไม่นำมาคิดกำไร ขาดทุน และ ROI)</td>
+      </tr>
+      ${ownerUseRooms.map((room) => `
+        <tr class="owner-use-row">
+          <td>อยู่เอง</td>
+          <td>${escapeHtml(room.room_code)}</td>
+          <td>${escapeHtml(room.owner_name || "-")}</td>
+          <td>${escapeHtml(room.tenant_name || "-")}</td>
+          <td>${formatOptionalCurrency(room.deposit_amount)}</td>
+          <td>${formatDateDisplay(room.contract_start_date)}</td>
+          <td>${formatDateDisplay(room.contract_end_date)}</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+      `).join("")}
+    ` : ""}
   `;
 }
 
@@ -1751,7 +2028,128 @@ function removeRoomsSection() {
   document.querySelector("#rooms")?.remove();
 }
 
+function removeOwnerUsePanel() {
+  ownerUseRooms?.closest(".panel")?.remove();
+}
+
 function renderManagementLists() {
+  const managementCapitalRoom = capitalRoom?.value || "";
+  const managementCapitalRows = getEnrichedTransactions()
+    .filter((tx) => tx.flow_type === "capital")
+    .filter((tx) => !managementCapitalRoom || tx.roomCode === managementCapitalRoom)
+    .sort((a, b) => new Date(b.tx_date) - new Date(a.tx_date))
+    .slice(0, 20);
+
+  const managementExpenseRoom = expenseRoom?.value || "";
+  const managementExpenseRows = getFilteredTransactions()
+    .filter((tx) => tx.flow_type === "expense")
+    .filter((tx) => !managementExpenseRoom || tx.roomCode === managementExpenseRoom)
+    .sort((a, b) => new Date(b.tx_date) - new Date(a.tx_date))
+    .slice(0, 20);
+
+  capitalDeleteList.innerHTML = managementCapitalRows.map((tx) => `
+    <article class="management-item">
+      <div>
+        <strong>${tx.roomCode} โ€ข ${formatCurrency(tx.amount)}</strong>
+        <p class="subtext">${tx.item_name || "ทุน"} โ€ข ${tx.tx_date}${tx.details ? ` โ€ข ${tx.details}` : ""}</p>
+      </div>
+      <button type="button" class="danger-button" data-capital-id="${tx.id}" data-capital-room="${tx.roomCode}">ลบทุน</button>
+    </article>
+  `).join("") || `<article class="management-item"><div><strong>ยังไม่มีรายการทุน</strong><p class="subtext">รายการนี้จะอิงตามห้องที่เลือกด้านบน</p></div></article>`;
+
+  expenseDeleteList.innerHTML = managementExpenseRows.map((tx) => `
+    <article class="management-item">
+      <div>
+        <strong>${tx.roomCode} โ€ข ${formatCurrency(tx.amount)}</strong>
+        <p class="subtext">${tx.tx_date}${tx.details ? ` โ€ข ${tx.details}` : ""}</p>
+      </div>
+      <button type="button" class="danger-button" data-expense-id="${tx.id}" data-expense-room="${tx.roomCode}">ลบค่าใช้จ่าย</button>
+    </article>
+  `).join("") || `<article class="management-item"><div><strong>ยังไม่มีค่าใช้จ่าย</strong><p class="subtext">รายการนี้จะอิงตามห้องที่เลือกและปีข้อมูลด้านบน</p></div></article>`;
+
+  const filteredManagedRooms = getManagedRooms();
+  roomDeleteList.innerHTML = filteredManagedRooms.length
+    ? filteredManagedRooms.map((room) => `
+      <article class="management-item management-item-room">
+        <div>
+          <strong>${room.room_code}</strong>
+          <div class="room-meta-list">
+            <p class="subtext">เจ้าของปัจจุบัน: ${escapeHtml(room.owner_name)}</p>
+            <p class="subtext">การใช้งาน: ${room.usage_type === "owner_use" ? "อยู่เอง" : "ปล่อยเช่า"}</p>
+            <p class="subtext">ผู้เช่า: ${escapeHtml(room.tenant_name || "-")}</p>
+            <p class="subtext">สัญญา: ${formatContractRange(room.contract_start_date, room.contract_end_date)}</p>
+            <p class="subtext">เริ่มปล่อยเช่า: ${isRentalRoom(room) && room.rent_start_date ? formatMonthLabel(monthKeyFromDate(room.rent_start_date)) : "-"}</p>
+            <p class="subtext">ค่ามัดจำ: ${formatOptionalCurrency(room.deposit_amount)}</p>
+          </div>
+        </div>
+        <div class="management-room-editor">
+          <label>
+            เจ้าของห้อง
+            <select data-room-owner-select="${room.id}">
+              ${state.owners
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((owner) => `<option value="${owner.id}" ${owner.id === room.owner_id ? "selected" : ""}>${owner.name}</option>`)
+                .join("")}
+            </select>
+          </label>
+          <label>
+            ชื่อผู้เช่า
+            <input type="text" data-room-tenant-input="${room.id}" value="${escapeHtml(room.tenant_name || "")}" placeholder="เช่น คุณสมชาย">
+          </label>
+          <label>
+            การใช้งานห้อง
+            <select data-room-usage-type="${room.id}">
+              <option value="rental" ${(room.usage_type || "rental") === "rental" ? "selected" : ""}>ปล่อยเช่า</option>
+              <option value="owner_use" ${(room.usage_type || "rental") === "owner_use" ? "selected" : ""}>อยู่เอง</option>
+            </select>
+          </label>
+          <label>
+            วันเริ่มสัญญา
+            <input type="text" inputmode="numeric" data-room-contract-start="${room.id}" value="${formatDateInput(room.contract_start_date || "")}" placeholder="วว/ดด/ปปปป">
+          </label>
+          <label>
+            วันสิ้นสุดสัญญา
+            <input type="text" inputmode="numeric" data-room-contract-end="${room.id}" value="${formatDateInput(room.contract_end_date || "")}" placeholder="วว/ดด/ปปปป">
+          </label>
+          <label>
+            เดือนเริ่มปล่อยเช่า
+            <input type="month" data-room-rent-start="${room.id}" value="${formatMonthInput(room.rent_start_date || "")}">
+          </label>
+          <label>
+            ค่ามัดจำ
+            <input type="number" step="0.01" inputmode="decimal" data-room-deposit="${room.id}" value="${room.deposit_amount ?? ""}" placeholder="เช่น 13000">
+          </label>
+          <label>
+            หมายเหตุ
+            <input type="text" data-room-notes-input="${room.id}" value="${escapeHtml(room.notes || "")}" placeholder="รายละเอียดเพิ่มเติม">
+          </label>
+          <div class="button-row">
+            <button type="button" class="secondary-button" data-room-update="${room.id}" data-room-code="${room.room_code}">บันทึกข้อมูลห้อง</button>
+            <button type="button" class="danger-button" data-room-id="${room.id}" data-room-code="${room.room_code}">ลบห้อง</button>
+          </div>
+        </div>
+      </article>
+    `).join("")
+    : `<article class="management-item"><div><strong>ไม่พบห้องตาม filter ที่เลือก</strong><p class="subtext">ลองเปลี่ยนเจ้าของห้องหรือการใช้งานห้องเพื่อดูรายการอื่น</p></div></article>`;
+
+  ownerDeleteList.innerHTML = state.owners
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((owner) => {
+      const roomCount = state.rooms.filter((room) => room.owner_id === owner.id).length;
+      return `
+        <article class="management-item">
+          <div>
+            <strong>${owner.name}</strong>
+            <p class="subtext">${roomCount} ห้องในระบบ</p>
+          </div>
+          <button type="button" class="danger-button" data-owner-id="${owner.id}" data-owner-name="${owner.name}">ลบเจ้าของห้อง</button>
+        </article>
+      `;
+    }).join("");
+  return;
+
   const selectedCapitalRoom = capitalRoom?.value || "";
   const capitalRows = getEnrichedTransactions()
     .filter((tx) => tx.flow_type === "capital")
@@ -1954,6 +2352,7 @@ function bindRoomOwnerUpdates() {
 
 async function init() {
   removeRoomsSection();
+  removeOwnerUsePanel();
   reorderOverviewPanels();
   applyOverviewLabels();
   bindNavigation();

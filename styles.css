@@ -350,6 +350,7 @@ input {
 }
 
 .owner-split,
+.owner-use-grid,
 .highlight-list,
 .activity-list,
 .stack-list {
@@ -472,6 +473,30 @@ th {
 
 .total-row td:first-child {
   color: #124b42;
+}
+
+.owner-use-section-row td {
+  font-weight: 700;
+  color: #6a4b14;
+  background: rgba(196, 138, 45, 0.12);
+  border-top: 1px solid rgba(196, 138, 45, 0.28);
+}
+
+.owner-use-row td {
+  background: rgba(196, 138, 45, 0.05);
+}
+
+.owner-use-total-row td {
+  font-weight: 700;
+  background: rgba(196, 138, 45, 0.16);
+  border-top: 1px solid rgba(196, 138, 45, 0.28);
+}
+
+.grand-total-row td {
+  font-weight: 700;
+  color: #123a52;
+  background: rgba(38, 93, 131, 0.10);
+  border-top: 2px solid rgba(38, 93, 131, 0.20);
 }
 
 .form-grid {
@@ -682,8 +707,37 @@ th {
   align-items: center;
 }
 
+.management-filter {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .management-actions select {
   min-width: 180px;
+}
+
+.owner-use-card {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 252, 247, 0.92);
+  border: 1px solid var(--line);
+}
+
+.table-sort {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.table-sort.active {
+  color: var(--accent);
 }
 
 .management-item-room {
